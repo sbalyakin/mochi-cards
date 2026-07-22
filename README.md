@@ -1,4 +1,4 @@
-# Mochi AI Card Generator
+# Mochi Cards
 
 Raycast extension for Mochi flashcards on macOS. You write the template, pick which parts are AI-generated, fill in a few variables, preview the card, and send it to your deck.
 
@@ -147,4 +147,3 @@ npm run build
 npm run lint
 npm test
 ```
-
