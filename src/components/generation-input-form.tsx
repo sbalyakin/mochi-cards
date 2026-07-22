@@ -1,7 +1,7 @@
 import { Action, ActionPanel, Form, Icon, showToast, Toast, useNavigation } from "@raycast/api";
 import { useEffect, useRef, useState } from "react";
 
-import type { CardTemplate, VariableValues } from "../domain/template";
+import type { CardTemplate, FieldValues } from "../domain/template";
 import { generateSession, getAiFieldErrors } from "../domain/generation-session";
 import { RaycastAiClient } from "../services/raycast-ai-client";
 import { CardPreview } from "./card-preview";
@@ -14,8 +14,8 @@ const aiClient = new RaycastAiClient();
 
 export function GenerationInputForm({ template }: GenerationInputFormProps) {
   const { push } = useNavigation();
-  const [values, setValues] = useState<VariableValues>(() =>
-    Object.fromEntries(template.variables.map((variable) => [variable.name, ""]))
+  const [values, setValues] = useState<FieldValues>(() =>
+    Object.fromEntries(template.fields.map((field) => [field.name, ""]))
   );
   const [errors, setErrors] = useState<Readonly<Record<string, string>>>({});
   const [isGenerating, setIsGenerating] = useState(false);
@@ -34,9 +34,9 @@ export function GenerationInputForm({ template }: GenerationInputFormProps) {
     }
 
     const nextErrors = Object.fromEntries(
-      template.variables
-        .filter((variable) => variable.required && (values[variable.name] ?? "").trim().length === 0)
-        .map((variable) => [variable.name, `${variable.label} is required`])
+      template.fields
+        .filter((field) => field.required && (values[field.name] ?? "").trim().length === 0)
+        .map((field) => [field.name, `${field.name} is required`])
     );
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) {
@@ -89,25 +89,25 @@ export function GenerationInputForm({ template }: GenerationInputFormProps) {
     >
       <Form.Description
         title="Template"
-        text={`${template.name} · ${template.variables.length} variable${template.variables.length === 1 ? "" : "s"}`}
+        text={`${template.name} · ${template.fields.length} field${template.fields.length === 1 ? "" : "s"}`}
       />
-      {template.variables.length === 0 ? (
-        <Form.Description title="Input" text="This template has no variables. Generate it as-is." />
+      {template.fields.length === 0 ? (
+        <Form.Description title="Input" text="This template has no fields. Generate it as-is." />
       ) : null}
-      {template.variables.map((variable) => (
+      {template.fields.map((field) => (
         <Form.TextArea
-          key={variable.name}
-          id={variable.name}
-          title={variable.label}
-          placeholder={variable.required ? "Required" : "Optional"}
-          value={values[variable.name] ?? ""}
-          error={errors[variable.name]}
+          key={field.name}
+          id={field.name}
+          title={field.name}
+          placeholder={field.required ? "Required" : "Optional"}
+          value={values[field.name] ?? ""}
+          error={errors[field.name]}
           onChange={(value) => {
-            setValues((current) => ({ ...current, [variable.name]: value }));
-            if (errors[variable.name]) {
+            setValues((current) => ({ ...current, [field.name]: value }));
+            if (errors[field.name]) {
               setErrors((current) => {
                 const remaining = { ...current };
-                delete remaining[variable.name];
+                delete remaining[field.name];
                 return remaining;
               });
             }

@@ -67,24 +67,44 @@ describe("TemplateRepository", () => {
 
     storage.value = JSON.stringify({
       version: 1,
-      templates: [{ ...created, deckId: "[[legacy-deck]]", deckName: undefined }],
+      templates: [
+        {
+          ...created,
+          deckId: "[[legacy-deck]]",
+          deckName: undefined,
+          fields: undefined,
+          variables: [{ name: "word", label: "Word", required: true }],
+        },
+      ],
     });
 
     expect((await repository.list())[0]).toMatchObject({ deckId: "legacy-deck", deckName: "Unknown deck" });
   });
 
+  it("migrates version 2 variables to fields without labels", async () => {
+    const created = await repository.create(draft());
+    storage.value = JSON.stringify({
+      version: 2,
+      templates: [{ ...created, fields: undefined, variables: [{ name: "word", label: "Word", required: true }] }],
+    });
+
+    await expect(repository.list()).resolves.toEqual([
+      expect.objectContaining({ fields: [{ name: "word", required: true }] }),
+    ]);
+  });
+
   it("rejects an unsupported storage version without overwriting it", async () => {
-    storage.value = JSON.stringify({ version: 3, templates: [] });
+    storage.value = JSON.stringify({ version: 4, templates: [] });
 
     await expect(repository.create(draft())).rejects.toMatchObject({ kind: "corrupted-data" });
-    expect(JSON.parse(storage.value)).toEqual({ version: 3, templates: [] });
+    expect(JSON.parse(storage.value)).toEqual({ version: 4, templates: [] });
   });
 });
 
 function draft(overrides: Partial<CardTemplateDraft> = {}): CardTemplateDraft {
   return {
     name: "Words",
-    variables: [{ name: "word", label: "Word", required: true }],
+    fields: [{ name: "word", required: true }],
     content: "# <<word>>",
     deckId: "deck-1",
     deckName: "Vocabulary",

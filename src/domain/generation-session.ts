@@ -1,4 +1,4 @@
-import type { CardTemplate, VariableValues } from "./template";
+import type { CardTemplate, FieldValues } from "./template";
 import type { AiClient, PreparedAiSegment, PreparedSegment } from "./template-engine";
 import { prepareTemplate, trimOuterEmptyLines } from "./template-engine";
 
@@ -40,7 +40,7 @@ export type AiFieldError = {
 
 export async function generateSession(
   template: CardTemplate,
-  values: VariableValues,
+  values: FieldValues,
   aiClient: AiClient,
   signal?: AbortSignal
 ): Promise<GeneratedSession> {

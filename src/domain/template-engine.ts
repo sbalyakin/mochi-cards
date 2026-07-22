@@ -1,4 +1,4 @@
-import type { CardTemplate, VariableValues } from "./template";
+import type { CardTemplate, FieldValues } from "./template";
 import { parseTemplate } from "./template-parser";
 import { assertValidTemplate } from "./template-validation";
 
@@ -21,22 +21,22 @@ export type PreparedSegment = PreparedTextSegment | PreparedAiSegment;
 
 const PLACEHOLDER_PATTERN = /<<([^<>]+)>>/g;
 
-export function prepareTemplate(template: CardTemplate, values: VariableValues): readonly PreparedSegment[] {
+export function prepareTemplate(template: CardTemplate, values: FieldValues): readonly PreparedSegment[] {
   assertValidTemplate(template);
 
   return parseTemplate(template.content).map((segment) => {
     switch (segment.kind) {
       case "text":
-        return { kind: "text", content: substituteVariables(segment.content, values) };
+        return { kind: "text", content: substituteFields(segment.content, values) };
       case "ai":
-        return { kind: "ai", id: segment.id, prompt: substituteVariables(segment.prompt, values) };
+        return { kind: "ai", id: segment.id, prompt: substituteFields(segment.prompt, values) };
       default:
         return assertNever(segment);
     }
   });
 }
 
-export function substituteVariables(content: string, values: VariableValues): string {
+export function substituteFields(content: string, values: FieldValues): string {
   return content.replace(PLACEHOLDER_PATTERN, (_placeholder, name: string) => values[name] ?? "");
 }
 

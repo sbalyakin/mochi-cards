@@ -6,10 +6,9 @@ export type TemplateValidationErrorCode =
   | "content-required"
   | "deck-id-required"
   | "deck-name-required"
-  | "variable-name-required"
-  | "variable-name-invalid"
-  | "variable-name-duplicate"
-  | "variable-label-required"
+  | "field-name-required"
+  | "field-name-invalid"
+  | "field-name-duplicate"
   | "unknown-placeholder"
   | TemplateParseErrorCode;
 
@@ -49,36 +48,28 @@ export function validateTemplate(template: CardTemplate | CardTemplateDraft): re
   }
 
   const declaredNames = new Set<string>();
-  template.variables.forEach((variable, index) => {
-    const name = variable.name.trim();
+  template.fields.forEach((field, index) => {
+    const name = field.name.trim();
     if (name.length === 0) {
       errors.push({
-        code: "variable-name-required",
-        path: `variables.${index}.name`,
-        message: `Variable ${index + 1} needs a name`,
+        code: "field-name-required",
+        path: `fields.${index}.name`,
+        message: `Field ${index + 1} needs a name`,
       });
     } else if (!VARIABLE_NAME_PATTERN.test(name)) {
       errors.push({
-        code: "variable-name-invalid",
-        path: `variables.${index}.name`,
-        message: `Variable “${name}” must start with a letter and contain only letters, digits, and _`,
+        code: "field-name-invalid",
+        path: `fields.${index}.name`,
+        message: `Field “${name}” must start with a letter and contain only letters, digits, and _`,
       });
     } else if (declaredNames.has(name)) {
       errors.push({
-        code: "variable-name-duplicate",
-        path: `variables.${index}.name`,
-        message: `Variable “${name}” is declared more than once`,
+        code: "field-name-duplicate",
+        path: `fields.${index}.name`,
+        message: `Field “${name}” is declared more than once`,
       });
     } else {
       declaredNames.add(name);
-    }
-
-    if (variable.label.trim().length === 0) {
-      errors.push({
-        code: "variable-label-required",
-        path: `variables.${index}.label`,
-        message: `Variable ${index + 1} needs a label`,
-      });
     }
   });
 
@@ -88,7 +79,7 @@ export function validateTemplate(template: CardTemplate | CardTemplateDraft): re
       errors.push({
         code: "unknown-placeholder",
         path: "content",
-        message: `Unknown variable: <<${name}>>`,
+        message: `Unknown field: <<${name}>>`,
       });
     }
   }

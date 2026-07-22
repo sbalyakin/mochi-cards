@@ -2,15 +2,28 @@ import { randomUUID } from "node:crypto";
 
 import { LocalStorage } from "@raycast/api";
 
-import { normalizeDeckId, type CardTemplate, type CardTemplateDraft, type TemplateVariable } from "../domain/template";
+import { normalizeDeckId, type CardTemplate, type CardTemplateDraft, type TemplateField } from "../domain/template";
 import { assertValidTemplate, validateTemplate } from "../domain/template-validation";
 
 const STORAGE_KEY = "mochi-card-templates";
-const STORAGE_VERSION = 2;
+const STORAGE_VERSION = 3;
 
 type TemplateEnvelope = {
   readonly version: typeof STORAGE_VERSION;
   readonly templates: readonly CardTemplate[];
+};
+
+type VersionTwoTemplateEnvelope = {
+  readonly version: 2;
+  readonly templates: readonly VersionTwoCardTemplate[];
+};
+
+type VersionTwoCardTemplate = Omit<CardTemplate, "fields"> & {
+  readonly variables: readonly VersionTwoTemplateField[];
+};
+
+type VersionTwoTemplateField = TemplateField & {
+  readonly label: string;
 };
 
 type LegacyTemplateEnvelope = {
@@ -18,7 +31,7 @@ type LegacyTemplateEnvelope = {
   readonly templates: readonly LegacyCardTemplate[];
 };
 
-type LegacyCardTemplate = Omit<CardTemplate, "deckName">;
+type LegacyCardTemplate = Omit<VersionTwoCardTemplate, "deckName">;
 
 export interface TemplateStorage {
   getItem(key: string): Promise<string | undefined>;
@@ -138,14 +151,16 @@ export class TemplateRepository {
           templates: parsed.templates.map(normalizeStoredTemplate),
         };
       }
+      if (isVersionTwoTemplateEnvelope(parsed)) {
+        return {
+          version: STORAGE_VERSION,
+          templates: parsed.templates.map((template) => migrateVersionTwoTemplate(template, template.deckName)),
+        };
+      }
       if (isLegacyTemplateEnvelope(parsed)) {
         return {
           version: STORAGE_VERSION,
-          templates: parsed.templates.map((template) => ({
-            ...template,
-            deckId: normalizeDeckId(template.deckId),
-            deckName: "Unknown deck",
-          })),
+          templates: parsed.templates.map((template) => migrateVersionTwoTemplate(template, "Unknown deck")),
         };
       }
       throw new Error("Stored template data does not match a supported version");
@@ -176,10 +191,9 @@ const raycastTemplateStorage: TemplateStorage = {
 function normalizeDraft(draft: CardTemplateDraft): CardTemplateDraft {
   return {
     name: draft.name.trim(),
-    variables: draft.variables.map((variable) => ({
-      name: variable.name.trim(),
-      label: variable.label.trim(),
-      required: variable.required,
+    fields: draft.fields.map((field) => ({
+      name: field.name.trim(),
+      required: field.required,
     })),
     content: draft.content,
     deckId: normalizeDeckId(draft.deckId),
@@ -222,8 +236,8 @@ function isCardTemplate(value: unknown): value is CardTemplate {
     !isRecord(value) ||
     typeof value.id !== "string" ||
     typeof value.name !== "string" ||
-    !Array.isArray(value.variables) ||
-    !value.variables.every(isTemplateVariable) ||
+    !Array.isArray(value.fields) ||
+    !value.fields.every(isTemplateField) ||
     typeof value.content !== "string" ||
     typeof value.deckId !== "string" ||
     typeof value.deckName !== "string" ||
@@ -240,7 +254,7 @@ function isCardTemplate(value: unknown): value is CardTemplate {
   const template: CardTemplate = {
     id: value.id,
     name: value.name,
-    variables: value.variables,
+    fields: value.fields,
     content: value.content,
     deckId: normalizeDeckId(value.deckId),
     deckName: value.deckName,
@@ -256,20 +270,56 @@ function normalizeStoredTemplate(template: CardTemplate): CardTemplate {
   return { ...template, deckId: normalizeDeckId(template.deckId), deckName: template.deckName.trim() };
 }
 
+function migrateVersionTwoTemplate(
+  template: VersionTwoCardTemplate | LegacyCardTemplate,
+  deckName: string
+): CardTemplate {
+  return {
+    id: template.id,
+    name: template.name,
+    fields: template.variables.map(({ name, required }) => ({ name, required })),
+    content: template.content,
+    deckId: normalizeDeckId(template.deckId),
+    deckName,
+    tags: template.tags,
+    reviewReverse: template.reviewReverse,
+    archived: template.archived,
+    updatedAt: template.updatedAt,
+  };
+}
+
+function isVersionTwoTemplateEnvelope(value: unknown): value is VersionTwoTemplateEnvelope {
+  if (!isRecord(value) || value.version !== 2 || !Array.isArray(value.templates)) {
+    return false;
+  }
+  return value.templates.every(isVersionTwoCardTemplate);
+}
+
 function isLegacyCardTemplate(value: unknown): value is LegacyCardTemplate {
   if (!isRecord(value) || "deckName" in value) {
     return false;
   }
-  return isCardTemplate({ ...value, deckName: "Unknown deck" });
+  return isVersionTwoCardTemplate({ ...value, deckName: "Unknown deck" });
 }
 
-function isTemplateVariable(value: unknown): value is TemplateVariable {
+function isVersionTwoCardTemplate(value: unknown): value is VersionTwoCardTemplate {
+  if (!isRecord(value) || !Array.isArray(value.variables) || !value.variables.every(isVersionTwoTemplateField)) {
+    return false;
+  }
+  return isCardTemplate({ ...value, fields: value.variables.map(({ name, required }) => ({ name, required })) });
+}
+
+function isVersionTwoTemplateField(value: unknown): value is VersionTwoTemplateField {
   return (
     isRecord(value) &&
     typeof value.name === "string" &&
     typeof value.label === "string" &&
     typeof value.required === "boolean"
   );
+}
+
+function isTemplateField(value: unknown): value is TemplateField {
+  return isRecord(value) && typeof value.name === "string" && typeof value.required === "boolean";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

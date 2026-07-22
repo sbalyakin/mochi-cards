@@ -1,13 +1,12 @@
-export type TemplateVariable = {
+export type TemplateField = {
   readonly name: string;
-  readonly label: string;
   readonly required: boolean;
 };
 
 export type CardTemplate = {
   readonly id: string;
   readonly name: string;
-  readonly variables: readonly TemplateVariable[];
+  readonly fields: readonly TemplateField[];
   readonly content: string;
   readonly deckId: string;
   readonly deckName: string;
@@ -19,7 +18,7 @@ export type CardTemplate = {
 
 export type CardTemplateDraft = Omit<CardTemplate, "id" | "updatedAt">;
 
-export type VariableValues = Readonly<Record<string, string>>;
+export type FieldValues = Readonly<Record<string, string>>;
 
 export function normalizeDeckId(value: string): string {
   const trimmed = value.trim();

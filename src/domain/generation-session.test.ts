@@ -14,7 +14,7 @@ import type { CardTemplate } from "./template";
 import { trimOuterEmptyLines, type AiClient } from "./template-engine";
 
 describe("generation session", () => {
-  it("substitutes repeated and empty variables before independent AI calls", async () => {
+  it("substitutes repeated and empty fields before independent AI calls", async () => {
     const prompts: string[] = [];
     const client: AiClient = {
       async ask(prompt: string): Promise<string> {
@@ -134,9 +134,9 @@ function template(content: string): CardTemplate {
   return {
     id: "template-1",
     name: "Test",
-    variables: [
-      { name: "word", label: "Word", required: false },
-      { name: "context", label: "Context", required: false },
+    fields: [
+      { name: "word", required: false },
+      { name: "context", required: false },
     ],
     content,
     deckId: "deck-1",

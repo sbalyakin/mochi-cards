@@ -4,21 +4,21 @@ import type { CardTemplateDraft } from "./template";
 import { validateTemplate } from "./template-validation";
 
 describe("validateTemplate", () => {
-  it("accepts repeated uses of declared variables", () => {
+  it("accepts repeated uses of declared fields", () => {
     const draft = createDraft({ content: "# <<word>>\n\nAgain: <<word>>" });
     expect(validateTemplate(draft)).toEqual([]);
   });
 
-  it("reports duplicate, malformed, and empty variable metadata", () => {
+  it("reports duplicate and malformed field names", () => {
     const draft = createDraft({
-      variables: [
-        { name: "word", label: "Word", required: true },
-        { name: "word", label: "", required: false },
-        { name: "1bad", label: "Bad", required: false },
+      fields: [
+        { name: "word", required: true },
+        { name: "word", required: false },
+        { name: "1bad", required: false },
       ],
     });
     expect(validateTemplate(draft).map((error) => error.code)).toEqual(
-      expect.arrayContaining(["variable-name-duplicate", "variable-label-required", "variable-name-invalid"])
+      expect.arrayContaining(["field-name-duplicate", "field-name-invalid"])
     );
   });
 
@@ -39,7 +39,7 @@ describe("validateTemplate", () => {
 function createDraft(overrides: Partial<CardTemplateDraft> = {}): CardTemplateDraft {
   return {
     name: "Words",
-    variables: [{ name: "word", label: "Word", required: true }],
+    fields: [{ name: "word", required: true }],
     content: "# <<word>>",
     deckId: "deck-1",
     deckName: "Vocabulary",

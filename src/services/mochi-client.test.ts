@@ -94,7 +94,7 @@ function template(): CardTemplate {
   return {
     id: "template-1",
     name: "Greek",
-    variables: [],
+    fields: [],
     content: "# Card",
     deckId: "[[deck-1]]",
     deckName: "Greek",

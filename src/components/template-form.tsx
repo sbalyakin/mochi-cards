@@ -1,15 +1,25 @@
 import { randomUUID } from "node:crypto";
 
-import { Action, ActionPanel, Form, getPreferenceValues, Icon, showToast, Toast, useNavigation } from "@raycast/api";
+import {
+  Action,
+  ActionPanel,
+  Form,
+  getPreferenceValues,
+  Icon,
+  Keyboard,
+  showToast,
+  Toast,
+  useNavigation,
+} from "@raycast/api";
 import { usePromise } from "@raycast/utils";
 import { useRef, useState } from "react";
 
-import type { CardTemplate, CardTemplateDraft, TemplateVariable } from "../domain/template";
+import type { CardTemplate, CardTemplateDraft, TemplateField } from "../domain/template";
 import { validateTemplate, type TemplateValidationError } from "../domain/template-validation";
 import { MochiClient } from "../services/mochi-client";
 import type { TemplateRepository } from "../storage/template-repository";
 
-type EditableVariable = TemplateVariable & {
+type EditableField = TemplateField & {
   readonly key: string;
 };
 
@@ -32,8 +42,8 @@ export function TemplateForm({ repository, template, onSaved }: TemplateFormProp
   const [content, setContent] = useState(template?.content ?? "");
   const [reviewReverse, setReviewReverse] = useState(template?.reviewReverse ?? false);
   const [archived, setArchived] = useState(template?.archived ?? false);
-  const [variables, setVariables] = useState<readonly EditableVariable[]>(
-    template?.variables.map(toEditableVariable) ?? [createEmptyVariable()]
+  const [fields, setFields] = useState<readonly EditableField[]>(
+    template?.fields.map(toEditableField) ?? [createInitialField()]
   );
   const [showValidation, setShowValidation] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -53,7 +63,7 @@ export function TemplateForm({ repository, template, onSaved }: TemplateFormProp
     content,
     reviewReverse,
     archived,
-    variables,
+    fields,
   });
   const validationErrors = showValidation ? validateTemplate(draft) : [];
 
@@ -91,10 +101,31 @@ export function TemplateForm({ repository, template, onSaved }: TemplateFormProp
     }
   }
 
-  function updateVariable(key: string, update: Partial<TemplateVariable>): void {
-    setVariables((current) =>
-      current.map((variable) => (variable.key === key ? { ...variable, ...update } : variable))
-    );
+  function updateField(key: string, update: Partial<TemplateField>): void {
+    setFields((current) => current.map((field) => (field.key === key ? { ...field, ...update } : field)));
+  }
+
+  function addField(): void {
+    setFields((current) => [...current, createEmptyField()]);
+  }
+
+  function removeField(key: string): void {
+    setFields((current) => (current.length > 1 ? current.filter((field) => field.key !== key) : current));
+  }
+
+  function moveField(key: string, direction: -1 | 1): void {
+    setFields((current) => {
+      const index = current.findIndex((field) => field.key === key);
+      const destination = index + direction;
+      if (index < 0 || destination < 0 || destination >= current.length) {
+        return current;
+      }
+
+      const reordered = [...current];
+      const [field] = reordered.splice(index, 1);
+      reordered.splice(destination, 0, field);
+      return reordered;
+    });
   }
 
   return (
@@ -108,21 +139,36 @@ export function TemplateForm({ repository, template, onSaved }: TemplateFormProp
             icon={Icon.SaveDocument}
             onSubmit={save}
           />
-          <Action
-            title="Add Variable"
-            icon={Icon.Plus}
-            onAction={() => setVariables((current) => [...current, createEmptyVariable()])}
-          />
-          {variables.length > 0 ? (
-            <ActionPanel.Submenu title="Remove Variable" icon={Icon.MinusCircle}>
-              {variables.map((variable, index) => (
-                <Action
-                  key={variable.key}
-                  title={variable.label || variable.name || `Variable ${index + 1}`}
-                  icon={Icon.Trash}
-                  style={Action.Style.Destructive}
-                  onAction={() => setVariables((current) => current.filter((item) => item.key !== variable.key))}
-                />
+          <Action title="New Field" icon={Icon.Plus} shortcut={Keyboard.Shortcut.Common.New} onAction={addField} />
+          {fields.length > 1 ? (
+            <ActionPanel.Submenu title="Reorder Fields" icon={Icon.ArrowUp} shortcut={{ modifiers: ["cmd"], key: "m" }}>
+              {fields.map((field, index) => (
+                <ActionPanel.Section key={field.key} title={field.name || `Field ${index + 1}`}>
+                  {index > 0 ? (
+                    <Action title="Move up" icon={Icon.ArrowUp} onAction={() => moveField(field.key, -1)} />
+                  ) : null}
+                  {index < fields.length - 1 ? (
+                    <Action title="Move Down" icon={Icon.ArrowDown} onAction={() => moveField(field.key, 1)} />
+                  ) : null}
+                </ActionPanel.Section>
+              ))}
+            </ActionPanel.Submenu>
+          ) : null}
+          {fields.length > 1 ? (
+            <ActionPanel.Submenu
+              title="Remove Field"
+              icon={Icon.MinusCircle}
+              shortcut={Keyboard.Shortcut.Common.Refresh}
+            >
+              {fields.map((field, index) => (
+                <ActionPanel.Section key={field.key} title={field.name || `Field ${index + 1}`}>
+                  <Action
+                    title="Remove Field"
+                    icon={Icon.Trash}
+                    style={Action.Style.Destructive}
+                    onAction={() => removeField(field.key)}
+                  />
+                </ActionPanel.Section>
               ))}
             </ActionPanel.Submenu>
           ) : null}
@@ -181,23 +227,20 @@ export function TemplateForm({ repository, template, onSaved }: TemplateFormProp
         id="content"
         title="Markdown Template"
         placeholder={"# <<word>>\n\n<ai>\nTranslate <<word>>.\n</ai>"}
-        info="Use <<variable>> placeholders and <ai>...</ai> fields"
+        info="Use <<field>> placeholders and <ai>...</ai> fields"
         value={content}
         error={fieldError(validationErrors, "content")}
         onChange={setContent}
       />
       <Form.Separator />
-      <Form.Description
-        title="Variables"
-        text="Add one row for every placeholder. Required variables must be filled before generation."
-      />
-      {variables.map((variable, index) => (
-        <VariableFields
-          key={variable.key}
+      <Form.Description title="Fields" text="Add, remove, or reorder fields from the Actions menu." />
+      {fields.map((field, index) => (
+        <FieldFields
+          key={field.key}
           index={index}
-          variable={variable}
+          field={field}
           errors={validationErrors}
-          onChange={(update) => updateVariable(variable.key, update)}
+          onChange={(update) => updateField(field.key, update)}
         />
       ))}
       {validationErrors.length > 0 ? (
@@ -210,50 +253,45 @@ export function TemplateForm({ repository, template, onSaved }: TemplateFormProp
   );
 }
 
-type VariableFieldsProps = {
+type FieldFieldsProps = {
   readonly index: number;
-  readonly variable: EditableVariable;
+  readonly field: EditableField;
   readonly errors: readonly TemplateValidationError[];
-  readonly onChange: (update: Partial<TemplateVariable>) => void;
+  readonly onChange: (update: Partial<TemplateField>) => void;
 };
 
-function VariableFields({ index, variable, errors, onChange }: VariableFieldsProps) {
+function FieldFields({ index, field, errors, onChange }: FieldFieldsProps) {
   return (
     <>
       {index > 0 ? <Form.Separator /> : null}
       <Form.TextField
-        id={`variable-${variable.key}-name`}
-        title={`Variable ${index + 1} Name`}
+        id={`field-${field.key}-name`}
+        title={`Field ${index + 1}`}
         placeholder="word"
-        value={variable.name}
-        error={fieldError(errors, `variables.${index}.name`)}
+        value={field.name}
+        error={fieldError(errors, `fields.${index}.name`)}
         onChange={(name) => onChange({ name })}
       />
-      <Form.TextField
-        id={`variable-${variable.key}-label`}
-        title={`Variable ${index + 1} Label`}
-        placeholder="Word"
-        value={variable.label}
-        error={fieldError(errors, `variables.${index}.label`)}
-        onChange={(label) => onChange({ label })}
-      />
       <Form.Checkbox
-        id={`variable-${variable.key}-required`}
-        title={`Variable ${index + 1}`}
+        id={`field-${field.key}-required`}
         label="Required"
-        value={variable.required}
+        value={field.required}
         onChange={(required) => onChange({ required })}
       />
     </>
   );
 }
 
-function createEmptyVariable(): EditableVariable {
-  return { key: randomUUID(), name: "", label: "", required: false };
+function createEmptyField(): EditableField {
+  return { key: randomUUID(), name: "", required: false };
 }
 
-function toEditableVariable(variable: TemplateVariable): EditableVariable {
-  return { ...variable, key: randomUUID() };
+function createInitialField(): EditableField {
+  return { key: randomUUID(), name: "Name", required: true };
+}
+
+function toEditableField(field: TemplateField): EditableField {
+  return { ...field, key: randomUUID() };
 }
 
 function createDraft(values: {
@@ -264,7 +302,7 @@ function createDraft(values: {
   readonly content: string;
   readonly reviewReverse: boolean;
   readonly archived: boolean;
-  readonly variables: readonly EditableVariable[];
+  readonly fields: readonly EditableField[];
 }): CardTemplateDraft {
   return {
     name: values.name,
@@ -274,7 +312,7 @@ function createDraft(values: {
     content: values.content,
     reviewReverse: values.reviewReverse,
     archived: values.archived,
-    variables: values.variables.map(({ name, label, required }) => ({ name, label, required })),
+    fields: values.fields.map(({ name, required }) => ({ name, required })),
   };
 }
 

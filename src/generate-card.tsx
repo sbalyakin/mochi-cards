@@ -32,7 +32,7 @@ export default function GenerateCard() {
               title={template.name}
               subtitle={template.deckName}
               accessories={[
-                { text: `${template.variables.length} input${template.variables.length === 1 ? "" : "s"}` },
+                { text: `${template.fields.length} input${template.fields.length === 1 ? "" : "s"}` },
                 { text: `${aiFieldCount} AI field${aiFieldCount === 1 ? "" : "s"}` },
               ]}
               actions={

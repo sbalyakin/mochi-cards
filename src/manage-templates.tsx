@@ -76,7 +76,7 @@ export default function ManageTemplates() {
             title={template.name}
             subtitle={template.deckName}
             accessories={[
-              { text: `${template.variables.length} variable${template.variables.length === 1 ? "" : "s"}` },
+              { text: `${template.fields.length} field${template.fields.length === 1 ? "" : "s"}` },
               ...(template.tags.length > 0 ? [{ tag: template.tags[0] }] : []),
             ]}
             actions={
