@@ -1,0 +1,4 @@
+interface:
+  display_name: "SEB Commit Workflow"
+  short_description: "Run the guarded git commit flow"
+  default_prompt: "Use $seb-commit to inspect changes, propose a commit message, and commit after approval."
