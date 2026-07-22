@@ -9,6 +9,11 @@ describe("validateTemplate", () => {
     expect(validateTemplate(draft)).toEqual([]);
   });
 
+  it("accepts placeholders with surrounding whitespace", () => {
+    const draft = createDraft({ content: "# <<   word       >>" });
+    expect(validateTemplate(draft)).toEqual([]);
+  });
+
   it("reports duplicate and malformed field names", () => {
     const draft = createDraft({
       fields: [

@@ -37,7 +37,7 @@ export function prepareTemplate(template: CardTemplate, values: FieldValues): re
 }
 
 export function substituteFields(content: string, values: FieldValues): string {
-  return content.replace(PLACEHOLDER_PATTERN, (_placeholder, name: string) => values[name] ?? "");
+  return content.replace(PLACEHOLDER_PATTERN, (_placeholder, name: string) => values[name.trim()] ?? "");
 }
 
 export function trimOuterEmptyLines(content: string): string {

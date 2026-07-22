@@ -74,7 +74,7 @@ export function validateTemplate(template: CardTemplate | CardTemplateDraft): re
   });
 
   for (const placeholder of template.content.matchAll(PLACEHOLDER_PATTERN)) {
-    const name = placeholder[1];
+    const name = placeholder[1].trim();
     if (!declaredNames.has(name)) {
       errors.push({
         code: "unknown-placeholder",

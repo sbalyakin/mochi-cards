@@ -33,6 +33,23 @@ describe("generation session", () => {
     expect(renderMarkdown(session)).toBe("# λόγος / λόγος / \nONE\nTWO");
   });
 
+  it("substitutes fields when placeholders have surrounding whitespace", async () => {
+    const prompts: string[] = [];
+    const session = await generateSession(
+      template("# <<   word       >>\n<ai>Translate << word >></ai>"),
+      { word: "λόγος" },
+      {
+        async ask(prompt): Promise<string> {
+          prompts.push(prompt);
+          return "word";
+        },
+      }
+    );
+
+    expect(prompts).toEqual(["Translate λόγος"]);
+    expect(renderMarkdown(session)).toBe("# λόγος\nword");
+  });
+
   it("keeps successful fields when another AI request fails", async () => {
     const client: AiClient = {
       async ask(prompt: string): Promise<string> {
