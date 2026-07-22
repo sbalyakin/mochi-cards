@@ -202,10 +202,10 @@ export function TemplateForm({ repository, template, onSaved }: TemplateFormProp
         onChange={setDeckId}
       >
         {deckId.length > 0 && !selectedDeck ? (
-          <Form.Dropdown.Item title={template?.deckName || "Unavailable deck"} value={deckId} />
+          <Form.Dropdown.Item title={template?.deckName || "Unavailable deck"} value={deckId} icon={Icon.Book} />
         ) : null}
         {decks.map((deck) => (
-          <Form.Dropdown.Item key={deck.id} title={deck.name} value={deck.id} />
+          <Form.Dropdown.Item key={deck.id} title={deck.name} value={deck.id} icon={Icon.Book} />
         ))}
       </Form.Dropdown>
       {isLoadingDecks ? <Form.Description title="Mochi Deck" text="Loading decks…" /> : null}
