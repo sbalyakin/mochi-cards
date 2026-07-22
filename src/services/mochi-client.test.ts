@@ -31,6 +31,16 @@ describe("MochiClient", () => {
     });
   });
 
+  it("posts the selected Mochi template ID", async () => {
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(new Response("", { status: 201 }));
+    const client = new MochiClient("secret-key", fetch);
+
+    await client.createCard("# Card", template({ mochiTemplateId: "mochi-template-1" }));
+
+    const [, init] = fetch.mock.calls[0];
+    expect(JSON.parse(String(init?.body))).toMatchObject({ "template-id": "mochi-template-1" });
+  });
+
   it("distinguishes authentication and validation failures", async () => {
     const unauthorized = new MochiClient("bad", async () => new Response("", { status: 401 }));
     const invalid = new MochiClient(
@@ -72,6 +82,31 @@ describe("MochiClient", () => {
     );
   });
 
+  it("loads every page of templates and sorts them", async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ bookmark: "next-page", docs: [{ id: "template-2", name: "Words" }] }))
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({ docs: [{ id: "template-1", name: "Greek" }] })));
+    const client = new MochiClient("key", fetch);
+
+    await expect(client.listTemplates()).resolves.toEqual([
+      { id: "template-1", name: "Greek" },
+      { id: "template-2", name: "Words" },
+    ]);
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      "https://app.mochi.cards/api/templates/",
+      expect.objectContaining({ method: "GET" })
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      "https://app.mochi.cards/api/templates/?bookmark=next-page",
+      expect.objectContaining({ method: "GET" })
+    );
+  });
+
   it("rejects invalid deck responses", async () => {
     const client = new MochiClient("key", async () => new Response(JSON.stringify({ docs: "invalid" })));
 
@@ -90,7 +125,7 @@ describe("MochiClient", () => {
   });
 });
 
-function template(): CardTemplate {
+function template(overrides: Partial<CardTemplate> = {}): CardTemplate {
   return {
     id: "template-1",
     name: "Greek",
@@ -98,9 +133,11 @@ function template(): CardTemplate {
     content: "# Card",
     deckId: "[[deck-1]]",
     deckName: "Greek",
+    mochiTemplateId: null,
     tags: ["greek"],
     reviewReverse: true,
     archived: false,
     updatedAt: "2026-07-22T00:00:00.000Z",
+    ...overrides,
   };
 }

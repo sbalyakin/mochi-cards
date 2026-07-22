@@ -72,6 +72,7 @@ describe("TemplateRepository", () => {
           ...created,
           deckId: "[[legacy-deck]]",
           deckName: undefined,
+          mochiTemplateId: undefined,
           fields: undefined,
           variables: [{ name: "word", label: "Word", required: true }],
         },
@@ -85,7 +86,14 @@ describe("TemplateRepository", () => {
     const created = await repository.create(draft());
     storage.value = JSON.stringify({
       version: 2,
-      templates: [{ ...created, fields: undefined, variables: [{ name: "word", label: "Word", required: true }] }],
+      templates: [
+        {
+          ...created,
+          fields: undefined,
+          mochiTemplateId: undefined,
+          variables: [{ name: "word", label: "Word", required: true }],
+        },
+      ],
     });
 
     await expect(repository.list()).resolves.toEqual([
@@ -93,11 +101,21 @@ describe("TemplateRepository", () => {
     ]);
   });
 
+  it("migrates version 3 templates to use no Mochi template", async () => {
+    const created = await repository.create(draft({ mochiTemplateId: "mochi-template-1" }));
+    storage.value = JSON.stringify({
+      version: 3,
+      templates: [{ ...created, mochiTemplateId: undefined }],
+    });
+
+    await expect(repository.list()).resolves.toEqual([expect.objectContaining({ mochiTemplateId: null })]);
+  });
+
   it("rejects an unsupported storage version without overwriting it", async () => {
-    storage.value = JSON.stringify({ version: 4, templates: [] });
+    storage.value = JSON.stringify({ version: 5, templates: [] });
 
     await expect(repository.create(draft())).rejects.toMatchObject({ kind: "corrupted-data" });
-    expect(JSON.parse(storage.value)).toEqual({ version: 4, templates: [] });
+    expect(JSON.parse(storage.value)).toEqual({ version: 5, templates: [] });
   });
 });
 
@@ -108,6 +126,7 @@ function draft(overrides: Partial<CardTemplateDraft> = {}): CardTemplateDraft {
     content: "# <<word>>",
     deckId: "deck-1",
     deckName: "Vocabulary",
+    mochiTemplateId: null,
     tags: [" vocabulary ", "vocabulary"],
     reviewReverse: false,
     archived: false,

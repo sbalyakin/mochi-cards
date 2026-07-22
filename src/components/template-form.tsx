@@ -33,11 +33,14 @@ type Preferences = {
   readonly mochiApiKey: string;
 };
 
+const NO_TEMPLATE_VALUE = "__no-template__";
+
 export function TemplateForm({ repository, template, onSaved }: TemplateFormProps) {
   const { pop } = useNavigation();
   const { mochiApiKey } = getPreferenceValues<Preferences>();
   const [name, setName] = useState(template?.name ?? "");
   const [deckId, setDeckId] = useState(template?.deckId ?? "");
+  const [mochiTemplateId, setMochiTemplateId] = useState(template?.mochiTemplateId ?? NO_TEMPLATE_VALUE);
   const [tags, setTags] = useState(template?.tags.join(", ") ?? "");
   const [content, setContent] = useState(template?.content ?? "");
   const [reviewReverse, setReviewReverse] = useState(template?.reviewReverse ?? false);
@@ -53,12 +56,19 @@ export function TemplateForm({ repository, template, onSaved }: TemplateFormProp
     error: decksError,
     isLoading: isLoadingDecks,
   } = usePromise(() => new MochiClient(mochiApiKey).listDecks(), []);
+  const {
+    data: mochiTemplates = [],
+    error: mochiTemplatesError,
+    isLoading: isLoadingMochiTemplates,
+  } = usePromise(() => new MochiClient(mochiApiKey).listTemplates(), []);
 
   const selectedDeck = decks.find((deck) => deck.id === deckId);
+  const selectedMochiTemplate = mochiTemplates.find((mochiTemplate) => mochiTemplate.id === mochiTemplateId);
   const draft = createDraft({
     name,
     deckId,
     deckName: selectedDeck?.name ?? template?.deckName ?? "",
+    mochiTemplateId,
     tags,
     content,
     reviewReverse,
@@ -200,6 +210,24 @@ export function TemplateForm({ repository, template, onSaved }: TemplateFormProp
       </Form.Dropdown>
       {isLoadingDecks ? <Form.Description title="Mochi Deck" text="Loading decks…" /> : null}
       {decksError ? <Form.Description title="Mochi Deck" text={errorMessage(decksError)} /> : null}
+      <Form.Dropdown id="mochiTemplateId" title="Mochi Template" value={mochiTemplateId} onChange={setMochiTemplateId}>
+        <Form.Dropdown.Item title="No Template" value={NO_TEMPLATE_VALUE} icon={Icon.CircleDisabled} />
+        {mochiTemplateId !== NO_TEMPLATE_VALUE && !selectedMochiTemplate ? (
+          <Form.Dropdown.Item title="Unavailable template" value={mochiTemplateId} icon={Icon.Box} />
+        ) : null}
+        {mochiTemplates.map((mochiTemplate) => (
+          <Form.Dropdown.Item
+            key={mochiTemplate.id}
+            title={mochiTemplate.name}
+            value={mochiTemplate.id}
+            icon={Icon.Box}
+          />
+        ))}
+      </Form.Dropdown>
+      {isLoadingMochiTemplates ? <Form.Description title="Mochi Template" text="Loading templates…" /> : null}
+      {mochiTemplatesError ? (
+        <Form.Description title="Mochi Template" text={errorMessage(mochiTemplatesError)} />
+      ) : null}
       <Form.TextField
         id="tags"
         title="Tags"
@@ -298,6 +326,7 @@ function createDraft(values: {
   readonly name: string;
   readonly deckId: string;
   readonly deckName: string;
+  readonly mochiTemplateId: string;
   readonly tags: string;
   readonly content: string;
   readonly reviewReverse: boolean;
@@ -308,6 +337,7 @@ function createDraft(values: {
     name: values.name,
     deckId: values.deckId,
     deckName: values.deckName,
+    mochiTemplateId: values.mochiTemplateId === NO_TEMPLATE_VALUE ? null : values.mochiTemplateId,
     tags: values.tags.split(","),
     content: values.content,
     reviewReverse: values.reviewReverse,

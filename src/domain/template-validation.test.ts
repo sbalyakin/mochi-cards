@@ -43,6 +43,7 @@ function createDraft(overrides: Partial<CardTemplateDraft> = {}): CardTemplateDr
     content: "# <<word>>",
     deckId: "deck-1",
     deckName: "Vocabulary",
+    mochiTemplateId: null,
     tags: [],
     reviewReverse: false,
     archived: false,

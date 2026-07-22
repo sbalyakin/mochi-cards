@@ -10,6 +10,7 @@ export type CardTemplate = {
   readonly content: string;
   readonly deckId: string;
   readonly deckName: string;
+  readonly mochiTemplateId: string | null;
   readonly tags: readonly string[];
   readonly reviewReverse: boolean;
   readonly archived: boolean;

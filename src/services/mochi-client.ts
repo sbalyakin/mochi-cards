@@ -2,6 +2,7 @@ import { normalizeDeckId, type CardTemplate } from "../domain/template";
 
 const MOCHI_CARDS_URL = "https://app.mochi.cards/api/cards/";
 const MOCHI_DECKS_URL = "https://app.mochi.cards/api/decks";
+const MOCHI_TEMPLATES_URL = "https://app.mochi.cards/api/templates/";
 const DEFAULT_TIMEOUT_MS = 15_000;
 
 export type MochiErrorKind = "network" | "unauthorized" | "validation" | "http" | "aborted";
@@ -27,8 +28,18 @@ export type MochiDeck = {
   readonly name: string;
 };
 
+export type MochiTemplate = {
+  readonly id: string;
+  readonly name: string;
+};
+
 type MochiDeckPage = {
   readonly decks: readonly MochiDeck[];
+  readonly bookmark?: string;
+};
+
+type MochiTemplatePage = {
+  readonly templates: readonly MochiTemplate[];
   readonly bookmark?: string;
 };
 
@@ -56,7 +67,7 @@ export class MochiClient {
         body: JSON.stringify({
           content,
           "deck-id": normalizeDeckId(template.deckId),
-          "template-id": null,
+          "template-id": template.mochiTemplateId,
           "manual-tags": template.tags,
           "review-reverse?": template.reviewReverse,
           "archived?": template.archived,
@@ -87,6 +98,27 @@ export class MochiClient {
     } while (bookmark);
 
     return [...decks.values()].sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  async listTemplates(signal?: AbortSignal): Promise<readonly MochiTemplate[]> {
+    const templates = new Map<string, MochiTemplate>();
+    const bookmarks = new Set<string>();
+    let bookmark: string | undefined;
+
+    do {
+      const url = bookmark ? `${MOCHI_TEMPLATES_URL}?bookmark=${encodeURIComponent(bookmark)}` : MOCHI_TEMPLATES_URL;
+      const page = parseTemplatePage(await this.request(url, { method: "GET" }, signal));
+      page.templates.forEach((template) => templates.set(template.id, template));
+      if (page.bookmark && bookmarks.has(page.bookmark)) {
+        break;
+      }
+      bookmark = page.bookmark;
+      if (bookmark) {
+        bookmarks.add(bookmark);
+      }
+    } while (bookmark);
+
+    return [...templates.values()].sort((left, right) => left.name.localeCompare(right.name));
   }
 
   private async request(url: string, init: RequestInit, signal?: AbortSignal): Promise<string> {
@@ -164,6 +196,27 @@ function parseDeckPage(responseText: string): MochiDeckPage {
   }
 }
 
+function parseTemplatePage(responseText: string): MochiTemplatePage {
+  try {
+    const value: unknown = JSON.parse(responseText);
+    if (
+      !isRecord(value) ||
+      !Array.isArray(value.docs) ||
+      (value.bookmark !== undefined && typeof value.bookmark !== "string")
+    ) {
+      throw new Error("Mochi returned an invalid template list");
+    }
+    return { templates: value.docs.filter(isMochiTemplate), bookmark: value.bookmark };
+  } catch (error: unknown) {
+    if (error instanceof MochiError) {
+      throw error;
+    }
+    throw new MochiError("http", errorMessage(error, "Mochi returned an invalid template list"), undefined, {
+      cause: error,
+    });
+  }
+}
+
 function parseCreatedCard(responseText: string): CreatedMochiCard {
   if (responseText.trim().length === 0) {
     return {};
@@ -209,5 +262,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isMochiDeck(value: unknown): value is MochiDeck {
+  return isRecord(value) && typeof value.id === "string" && typeof value.name === "string";
+}
+
+function isMochiTemplate(value: unknown): value is MochiTemplate {
   return isRecord(value) && typeof value.id === "string" && typeof value.name === "string";
 }

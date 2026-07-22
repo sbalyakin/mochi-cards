@@ -38,9 +38,9 @@ Each `<ai>` block is a separate request. If one translation comes back wrong, yo
 
 ## Template syntax
 
-A template has a name, a list of variables, Markdown content, and a Mochi deck. Optional fields include tags, `review-reverse?`, and `archived?`.
+A template has a name, a list of variables, Markdown content, and a Mochi deck. Optional fields include a Mochi template, tags, `review-reverse?`, and `archived?`.
 
-The template form loads decks from `GET https://app.mochi.cards/api/decks` and displays their names. The internal deck ID is used only when sending a card to Mochi.
+The template form loads decks from `GET https://app.mochi.cards/api/decks` and Mochi templates from `GET https://app.mochi.cards/api/templates/`. The internal IDs are used only when sending a card to Mochi. `No Template` is selected by default.
 
 ### Variables
 
@@ -99,9 +99,7 @@ After generation you can:
 
 ## Sending to Mochi
 
-Confirmed cards are posted to the Mochi API as regular Markdown in `content`. The extension does not use Mochi templates. Placeholders and `<ai>` tags never leave your machine.
-
-The request explicitly sends `"template-id": null`, so a default template configured on the target deck is not applied.
+Confirmed cards are posted to the Mochi API as regular Markdown in `content`. If selected, the Mochi template is sent in `template-id`; otherwise it is sent as `null`. Placeholders and `<ai>` tags never leave your machine.
 
 ```http
 POST https://app.mochi.cards/api/cards/

@@ -6,19 +6,26 @@ import { normalizeDeckId, type CardTemplate, type CardTemplateDraft, type Templa
 import { assertValidTemplate, validateTemplate } from "../domain/template-validation";
 
 const STORAGE_KEY = "mochi-card-templates";
-const STORAGE_VERSION = 3;
+const STORAGE_VERSION = 4;
 
 type TemplateEnvelope = {
   readonly version: typeof STORAGE_VERSION;
   readonly templates: readonly CardTemplate[];
 };
 
+type VersionThreeTemplateEnvelope = {
+  readonly version: 3;
+  readonly templates: readonly VersionThreeCardTemplate[];
+};
+
+type VersionThreeCardTemplate = Omit<CardTemplate, "mochiTemplateId">;
+
 type VersionTwoTemplateEnvelope = {
   readonly version: 2;
   readonly templates: readonly VersionTwoCardTemplate[];
 };
 
-type VersionTwoCardTemplate = Omit<CardTemplate, "fields"> & {
+type VersionTwoCardTemplate = Omit<CardTemplate, "fields" | "mochiTemplateId"> & {
   readonly variables: readonly VersionTwoTemplateField[];
 };
 
@@ -151,6 +158,12 @@ export class TemplateRepository {
           templates: parsed.templates.map(normalizeStoredTemplate),
         };
       }
+      if (isVersionThreeTemplateEnvelope(parsed)) {
+        return {
+          version: STORAGE_VERSION,
+          templates: parsed.templates.map(migrateVersionThreeTemplate),
+        };
+      }
       if (isVersionTwoTemplateEnvelope(parsed)) {
         return {
           version: STORAGE_VERSION,
@@ -198,6 +211,7 @@ function normalizeDraft(draft: CardTemplateDraft): CardTemplateDraft {
     content: draft.content,
     deckId: normalizeDeckId(draft.deckId),
     deckName: draft.deckName.trim(),
+    mochiTemplateId: draft.mochiTemplateId?.trim() || null,
     tags: [...new Set(draft.tags.map((tag) => tag.trim()).filter(Boolean))],
     reviewReverse: draft.reviewReverse,
     archived: draft.archived,
@@ -241,6 +255,7 @@ function isCardTemplate(value: unknown): value is CardTemplate {
     typeof value.content !== "string" ||
     typeof value.deckId !== "string" ||
     typeof value.deckName !== "string" ||
+    (value.mochiTemplateId !== null && typeof value.mochiTemplateId !== "string") ||
     !Array.isArray(value.tags) ||
     !value.tags.every((tag) => typeof tag === "string") ||
     typeof value.reviewReverse !== "boolean" ||
@@ -258,6 +273,7 @@ function isCardTemplate(value: unknown): value is CardTemplate {
     content: value.content,
     deckId: normalizeDeckId(value.deckId),
     deckName: value.deckName,
+    mochiTemplateId: value.mochiTemplateId,
     tags: value.tags,
     reviewReverse: value.reviewReverse,
     archived: value.archived,
@@ -267,7 +283,21 @@ function isCardTemplate(value: unknown): value is CardTemplate {
 }
 
 function normalizeStoredTemplate(template: CardTemplate): CardTemplate {
-  return { ...template, deckId: normalizeDeckId(template.deckId), deckName: template.deckName.trim() };
+  return {
+    ...template,
+    deckId: normalizeDeckId(template.deckId),
+    deckName: template.deckName.trim(),
+    mochiTemplateId: template.mochiTemplateId?.trim() || null,
+  };
+}
+
+function migrateVersionThreeTemplate(template: VersionThreeCardTemplate): CardTemplate {
+  return {
+    ...template,
+    deckId: normalizeDeckId(template.deckId),
+    deckName: template.deckName.trim(),
+    mochiTemplateId: null,
+  };
 }
 
 function migrateVersionTwoTemplate(
@@ -281,6 +311,7 @@ function migrateVersionTwoTemplate(
     content: template.content,
     deckId: normalizeDeckId(template.deckId),
     deckName,
+    mochiTemplateId: null,
     tags: template.tags,
     reviewReverse: template.reviewReverse,
     archived: template.archived,
@@ -295,6 +326,17 @@ function isVersionTwoTemplateEnvelope(value: unknown): value is VersionTwoTempla
   return value.templates.every(isVersionTwoCardTemplate);
 }
 
+function isVersionThreeTemplateEnvelope(value: unknown): value is VersionThreeTemplateEnvelope {
+  if (!isRecord(value) || value.version !== 3 || !Array.isArray(value.templates)) {
+    return false;
+  }
+  return value.templates.every(isVersionThreeCardTemplate);
+}
+
+function isVersionThreeCardTemplate(value: unknown): value is VersionThreeCardTemplate {
+  return isRecord(value) && isCardTemplate({ ...value, mochiTemplateId: null });
+}
+
 function isLegacyCardTemplate(value: unknown): value is LegacyCardTemplate {
   if (!isRecord(value) || "deckName" in value) {
     return false;
@@ -306,7 +348,11 @@ function isVersionTwoCardTemplate(value: unknown): value is VersionTwoCardTempla
   if (!isRecord(value) || !Array.isArray(value.variables) || !value.variables.every(isVersionTwoTemplateField)) {
     return false;
   }
-  return isCardTemplate({ ...value, fields: value.variables.map(({ name, required }) => ({ name, required })) });
+  return isCardTemplate({
+    ...value,
+    fields: value.variables.map(({ name, required }) => ({ name, required })),
+    mochiTemplateId: null,
+  });
 }
 
 function isVersionTwoTemplateField(value: unknown): value is VersionTwoTemplateField {

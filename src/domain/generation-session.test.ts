@@ -141,6 +141,7 @@ function template(content: string): CardTemplate {
     content,
     deckId: "deck-1",
     deckName: "Vocabulary",
+    mochiTemplateId: null,
     tags: [],
     reviewReverse: false,
     archived: false,
