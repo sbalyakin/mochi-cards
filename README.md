@@ -10,6 +10,15 @@ The extension does not invent card structure for you. Your Markdown template is 
 - A [Mochi](https://mochi.cards/) account and API key
 - Raycast AI access (used for `<ai>` fields)
 
+## Local installation
+
+```bash
+npm install
+npm run dev
+```
+
+Open Raycast, enable the development extension, and enter the Mochi API key in the extension preferences. The key is stored as a Raycast password preference; templates and unfinished form state never contain it.
+
 ## How it works
 
 1. Create a template with variables, Markdown body, and a Mochi deck ID.
@@ -30,6 +39,8 @@ Each `<ai>` block is a separate request. If one translation comes back wrong, yo
 ## Template syntax
 
 A template has a name, a list of variables, Markdown content, and a Mochi deck ID. Optional fields include tags, `review-reverse?`, and `archived?`.
+
+Deck IDs can be pasted either as `xuMPFbpj` or as a Mochi link `[[xuMPFbpj]]`; surrounding brackets are removed automatically.
 
 ### Variables
 
@@ -86,14 +97,14 @@ After generation you can:
 - **Copy Markdown**
 - **Save as Markdown File**
 
-
-
 ## Sending to Mochi
 
 Confirmed cards are posted to the Mochi API as regular Markdown in `content`. The extension does not use Mochi templates. Placeholders and `<ai>` tags never leave your machine.
 
+The request explicitly sends `"template-id": null`, so a default template configured on the target deck is not applied.
+
 ```http
-POST /cards
+POST https://app.mochi.cards/api/cards/
 ```
 
 ```json
@@ -104,6 +115,8 @@ POST /cards
 ```
 
 Store your Mochi API key in Raycast preferences. The extension uses HTTP Basic Auth with the API key as the username and an empty password.
+
+Templates are stored locally in a versioned Raycast `LocalStorage` record. If that record is malformed or from an unsupported version, the extension reports the problem and leaves the original data unchanged.
 
 ## Template validation
 
@@ -129,21 +142,17 @@ Not supported: conditionals, loops, filters, default values, typed variables, ne
 - **Generate Card** — pick a template and create a card
 - **Manage Templates** — create, edit, duplicate, and delete templates
 
-
-
 ## Development
-
-```bash
-npm install
-npm run dev
-```
 
 Open the extension in Raycast with **Manage Extensions** while `npm run dev` is running.
 
 Useful scripts:
 
+Vitest is used so the strict TypeScript domain and adapter tests run directly without maintaining a separate emitted test build.
+
 ```bash
 npm run build
 npm run lint
+npm run typecheck
 npm test
 ```
