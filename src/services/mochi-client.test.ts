@@ -45,6 +45,42 @@ describe("MochiClient", () => {
     });
   });
 
+  it("loads every page of decks and sorts them", async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ bookmark: "next-page", docs: [{ id: "deck-2", name: "Words" }] }))
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ bookmark: "next-page", docs: [{ id: "deck-1", name: "Greek" }] }))
+      );
+    const client = new MochiClient("key", fetch);
+
+    await expect(client.listDecks()).resolves.toEqual([
+      { id: "deck-1", name: "Greek" },
+      { id: "deck-2", name: "Words" },
+    ]);
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      "https://app.mochi.cards/api/decks",
+      expect.objectContaining({ method: "GET" })
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      "https://app.mochi.cards/api/decks?bookmark=next-page",
+      expect.objectContaining({ method: "GET" })
+    );
+  });
+
+  it("rejects invalid deck responses", async () => {
+    const client = new MochiClient("key", async () => new Response(JSON.stringify({ docs: "invalid" })));
+
+    await expect(client.listDecks()).rejects.toMatchObject({
+      kind: "http",
+      message: "Mochi returned an invalid deck list",
+    });
+  });
+
   it("wraps network errors", async () => {
     const client = new MochiClient("key", async () => {
       throw new Error("offline");
@@ -61,6 +97,7 @@ function template(): CardTemplate {
     variables: [],
     content: "# Card",
     deckId: "[[deck-1]]",
+    deckName: "Greek",
     tags: ["greek"],
     reviewReverse: true,
     archived: false,

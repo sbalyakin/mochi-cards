@@ -5,6 +5,7 @@ export type TemplateValidationErrorCode =
   | "name-required"
   | "content-required"
   | "deck-id-required"
+  | "deck-name-required"
   | "variable-name-required"
   | "variable-name-invalid"
   | "variable-name-duplicate"
@@ -41,7 +42,10 @@ export function validateTemplate(template: CardTemplate | CardTemplateDraft): re
     errors.push({ code: "content-required", path: "content", message: "Markdown content is required" });
   }
   if (template.deckId.trim().length === 0) {
-    errors.push({ code: "deck-id-required", path: "deckId", message: "Mochi deck ID is required" });
+    errors.push({ code: "deck-id-required", path: "deckId", message: "Select a Mochi deck" });
+  }
+  if (template.deckName.trim().length === 0) {
+    errors.push({ code: "deck-name-required", path: "deckId", message: "Select a Mochi deck" });
   }
 
   const declaredNames = new Set<string>();

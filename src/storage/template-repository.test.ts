@@ -61,23 +61,23 @@ describe("TemplateRepository", () => {
     expect(storage.value).toBe(original);
   });
 
-  it("removes Mochi link brackets from new and existing deck IDs", async () => {
+  it("migrates version 1 templates without exposing deck IDs as names", async () => {
     const created = await repository.create(draft({ deckId: " [[deck-1]] " }));
     expect(created.deckId).toBe("deck-1");
 
     storage.value = JSON.stringify({
       version: 1,
-      templates: [{ ...created, deckId: "[[legacy-deck]]" }],
+      templates: [{ ...created, deckId: "[[legacy-deck]]", deckName: undefined }],
     });
 
-    expect((await repository.list())[0].deckId).toBe("legacy-deck");
+    expect((await repository.list())[0]).toMatchObject({ deckId: "legacy-deck", deckName: "Unknown deck" });
   });
 
   it("rejects an unsupported storage version without overwriting it", async () => {
-    storage.value = JSON.stringify({ version: 2, templates: [] });
+    storage.value = JSON.stringify({ version: 3, templates: [] });
 
     await expect(repository.create(draft())).rejects.toMatchObject({ kind: "corrupted-data" });
-    expect(JSON.parse(storage.value)).toEqual({ version: 2, templates: [] });
+    expect(JSON.parse(storage.value)).toEqual({ version: 3, templates: [] });
   });
 });
 
@@ -87,6 +87,7 @@ function draft(overrides: Partial<CardTemplateDraft> = {}): CardTemplateDraft {
     variables: [{ name: "word", label: "Word", required: true }],
     content: "# <<word>>",
     deckId: "deck-1",
+    deckName: "Vocabulary",
     tags: [" vocabulary ", "vocabulary"],
     reviewReverse: false,
     archived: false,

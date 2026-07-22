@@ -6,12 +6,19 @@ import { normalizeDeckId, type CardTemplate, type CardTemplateDraft, type Templa
 import { assertValidTemplate, validateTemplate } from "../domain/template-validation";
 
 const STORAGE_KEY = "mochi-card-templates";
-const STORAGE_VERSION = 1;
+const STORAGE_VERSION = 2;
 
 type TemplateEnvelope = {
   readonly version: typeof STORAGE_VERSION;
   readonly templates: readonly CardTemplate[];
 };
+
+type LegacyTemplateEnvelope = {
+  readonly version: 1;
+  readonly templates: readonly LegacyCardTemplate[];
+};
+
+type LegacyCardTemplate = Omit<CardTemplate, "deckName">;
 
 export interface TemplateStorage {
   getItem(key: string): Promise<string | undefined>;
@@ -125,13 +132,23 @@ export class TemplateRepository {
 
     try {
       const parsed: unknown = JSON.parse(storedValue);
-      if (!isTemplateEnvelope(parsed)) {
-        throw new Error("Stored template data does not match version 1");
+      if (isTemplateEnvelope(parsed)) {
+        return {
+          ...parsed,
+          templates: parsed.templates.map(normalizeStoredTemplate),
+        };
       }
-      return {
-        ...parsed,
-        templates: parsed.templates.map(normalizeStoredTemplate),
-      };
+      if (isLegacyTemplateEnvelope(parsed)) {
+        return {
+          version: STORAGE_VERSION,
+          templates: parsed.templates.map((template) => ({
+            ...template,
+            deckId: normalizeDeckId(template.deckId),
+            deckName: "Unknown deck",
+          })),
+        };
+      }
+      throw new Error("Stored template data does not match a supported version");
     } catch (error: unknown) {
       throw new TemplateRepositoryError(
         "corrupted-data",
@@ -166,6 +183,7 @@ function normalizeDraft(draft: CardTemplateDraft): CardTemplateDraft {
     })),
     content: draft.content,
     deckId: normalizeDeckId(draft.deckId),
+    deckName: draft.deckName.trim(),
     tags: [...new Set(draft.tags.map((tag) => tag.trim()).filter(Boolean))],
     reviewReverse: draft.reviewReverse,
     archived: draft.archived,
@@ -192,6 +210,13 @@ function isTemplateEnvelope(value: unknown): value is TemplateEnvelope {
   return value.templates.every(isCardTemplate);
 }
 
+function isLegacyTemplateEnvelope(value: unknown): value is LegacyTemplateEnvelope {
+  if (!isRecord(value) || value.version !== 1 || !Array.isArray(value.templates)) {
+    return false;
+  }
+  return value.templates.every(isLegacyCardTemplate);
+}
+
 function isCardTemplate(value: unknown): value is CardTemplate {
   if (
     !isRecord(value) ||
@@ -201,6 +226,7 @@ function isCardTemplate(value: unknown): value is CardTemplate {
     !value.variables.every(isTemplateVariable) ||
     typeof value.content !== "string" ||
     typeof value.deckId !== "string" ||
+    typeof value.deckName !== "string" ||
     !Array.isArray(value.tags) ||
     !value.tags.every((tag) => typeof tag === "string") ||
     typeof value.reviewReverse !== "boolean" ||
@@ -217,6 +243,7 @@ function isCardTemplate(value: unknown): value is CardTemplate {
     variables: value.variables,
     content: value.content,
     deckId: normalizeDeckId(value.deckId),
+    deckName: value.deckName,
     tags: value.tags,
     reviewReverse: value.reviewReverse,
     archived: value.archived,
@@ -226,7 +253,14 @@ function isCardTemplate(value: unknown): value is CardTemplate {
 }
 
 function normalizeStoredTemplate(template: CardTemplate): CardTemplate {
-  return { ...template, deckId: normalizeDeckId(template.deckId) };
+  return { ...template, deckId: normalizeDeckId(template.deckId), deckName: template.deckName.trim() };
+}
+
+function isLegacyCardTemplate(value: unknown): value is LegacyCardTemplate {
+  if (!isRecord(value) || "deckName" in value) {
+    return false;
+  }
+  return isCardTemplate({ ...value, deckName: "Unknown deck" });
 }
 
 function isTemplateVariable(value: unknown): value is TemplateVariable {

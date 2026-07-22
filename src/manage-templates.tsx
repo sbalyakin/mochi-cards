@@ -74,7 +74,7 @@ export default function ManageTemplates() {
             key={template.id}
             icon={Icon.Document}
             title={template.name}
-            subtitle={template.deckId}
+            subtitle={template.deckName}
             accessories={[
               { text: `${template.variables.length} variable${template.variables.length === 1 ? "" : "s"}` },
               ...(template.tags.length > 0 ? [{ tag: template.tags[0] }] : []),

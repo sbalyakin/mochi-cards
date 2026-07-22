@@ -21,7 +21,7 @@ Open Raycast, enable the development extension, and enter the Mochi API key in t
 
 ## How it works
 
-1. Create a template with variables, Markdown body, and a Mochi deck ID.
+1. Create a template with variables, Markdown body, and a Mochi deck selected from your account.
 2. Run **Generate Card**, pick a template, and fill the form.
 3. The extension substitutes `<<variables>>`, calls AI for each `<ai>` block, and shows a preview.
 4. Regenerate one field, edit the Markdown by hand, or send the card to Mochi.
@@ -38,9 +38,9 @@ Each `<ai>` block is a separate request. If one translation comes back wrong, yo
 
 ## Template syntax
 
-A template has a name, a list of variables, Markdown content, and a Mochi deck ID. Optional fields include tags, `review-reverse?`, and `archived?`.
+A template has a name, a list of variables, Markdown content, and a Mochi deck. Optional fields include tags, `review-reverse?`, and `archived?`.
 
-Deck IDs can be pasted either as `xuMPFbpj` or as a Mochi link `[[xuMPFbpj]]`; surrounding brackets are removed automatically.
+The template form loads decks from `GET https://app.mochi.cards/api/decks` and displays their names. The internal deck ID is used only when sending a card to Mochi.
 
 ### Variables
 
@@ -126,7 +126,7 @@ Templates are checked before generation. Common errors:
 - `Unclosed <ai> field`
 - `Nested <ai> fields are not supported`
 
-The validator also checks variable name rules, empty AI fields, empty templates, and missing deck IDs.
+The validator also checks variable name rules, empty AI fields, empty templates, and missing deck selections.
 
 ## What is not supported (v1)
 

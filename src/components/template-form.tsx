@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
 
-import { Action, ActionPanel, Form, Icon, showToast, Toast, useNavigation } from "@raycast/api";
+import { Action, ActionPanel, Form, getPreferenceValues, Icon, showToast, Toast, useNavigation } from "@raycast/api";
+import { usePromise } from "@raycast/utils";
 import { useRef, useState } from "react";
 
 import type { CardTemplate, CardTemplateDraft, TemplateVariable } from "../domain/template";
 import { validateTemplate, type TemplateValidationError } from "../domain/template-validation";
+import { MochiClient } from "../services/mochi-client";
 import type { TemplateRepository } from "../storage/template-repository";
 
 type EditableVariable = TemplateVariable & {
@@ -17,8 +19,13 @@ type TemplateFormProps = {
   readonly onSaved: () => Promise<void> | void;
 };
 
+type Preferences = {
+  readonly mochiApiKey: string;
+};
+
 export function TemplateForm({ repository, template, onSaved }: TemplateFormProps) {
   const { pop } = useNavigation();
+  const { mochiApiKey } = getPreferenceValues<Preferences>();
   const [name, setName] = useState(template?.name ?? "");
   const [deckId, setDeckId] = useState(template?.deckId ?? "");
   const [tags, setTags] = useState(template?.tags.join(", ") ?? "");
@@ -31,8 +38,23 @@ export function TemplateForm({ repository, template, onSaved }: TemplateFormProp
   const [showValidation, setShowValidation] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const saving = useRef(false);
+  const {
+    data: decks = [],
+    error: decksError,
+    isLoading: isLoadingDecks,
+  } = usePromise(() => new MochiClient(mochiApiKey).listDecks(), []);
 
-  const draft = createDraft({ name, deckId, tags, content, reviewReverse, archived, variables });
+  const selectedDeck = decks.find((deck) => deck.id === deckId);
+  const draft = createDraft({
+    name,
+    deckId,
+    deckName: selectedDeck?.name ?? template?.deckName ?? "",
+    tags,
+    content,
+    reviewReverse,
+    archived,
+    variables,
+  });
   const validationErrors = showValidation ? validateTemplate(draft) : [];
 
   async function save(): Promise<void> {
@@ -115,14 +137,23 @@ export function TemplateForm({ repository, template, onSaved }: TemplateFormProp
         error={fieldError(validationErrors, "name")}
         onChange={setName}
       />
-      <Form.TextField
+      <Form.Dropdown
         id="deckId"
-        title="Mochi Deck ID"
-        placeholder="Paste the deck ID from Mochi"
+        title="Mochi Deck"
+        placeholder="Choose a deck"
         value={deckId}
         error={fieldError(validationErrors, "deckId")}
         onChange={setDeckId}
-      />
+      >
+        {deckId.length > 0 && !selectedDeck ? (
+          <Form.Dropdown.Item title={template?.deckName || "Unavailable deck"} value={deckId} />
+        ) : null}
+        {decks.map((deck) => (
+          <Form.Dropdown.Item key={deck.id} title={deck.name} value={deck.id} />
+        ))}
+      </Form.Dropdown>
+      {isLoadingDecks ? <Form.Description title="Mochi Deck" text="Loading decks…" /> : null}
+      {decksError ? <Form.Description title="Mochi Deck" text={errorMessage(decksError)} /> : null}
       <Form.TextField
         id="tags"
         title="Tags"
@@ -228,6 +259,7 @@ function toEditableVariable(variable: TemplateVariable): EditableVariable {
 function createDraft(values: {
   readonly name: string;
   readonly deckId: string;
+  readonly deckName: string;
   readonly tags: string;
   readonly content: string;
   readonly reviewReverse: boolean;
@@ -237,6 +269,7 @@ function createDraft(values: {
   return {
     name: values.name,
     deckId: values.deckId,
+    deckName: values.deckName,
     tags: values.tags.split(","),
     content: values.content,
     reviewReverse: values.reviewReverse,

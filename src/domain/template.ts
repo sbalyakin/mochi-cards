@@ -10,6 +10,7 @@ export type CardTemplate = {
   readonly variables: readonly TemplateVariable[];
   readonly content: string;
   readonly deckId: string;
+  readonly deckName: string;
   readonly tags: readonly string[];
   readonly reviewReverse: boolean;
   readonly archived: boolean;

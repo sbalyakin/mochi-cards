@@ -28,6 +28,12 @@ describe("validateTemplate", () => {
       expect.arrayContaining(["unknown-placeholder", "unclosed-ai"])
     );
   });
+
+  it("requires a selected Mochi deck", () => {
+    expect(validateTemplate(createDraft({ deckName: "" }))).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: "deck-name-required", path: "deckId" })])
+    );
+  });
 });
 
 function createDraft(overrides: Partial<CardTemplateDraft> = {}): CardTemplateDraft {
@@ -36,6 +42,7 @@ function createDraft(overrides: Partial<CardTemplateDraft> = {}): CardTemplateDr
     variables: [{ name: "word", label: "Word", required: true }],
     content: "# <<word>>",
     deckId: "deck-1",
+    deckName: "Vocabulary",
     tags: [],
     reviewReverse: false,
     archived: false,

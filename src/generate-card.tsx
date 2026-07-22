@@ -30,7 +30,7 @@ export default function GenerateCard() {
               key={template.id}
               icon={Icon.Stars}
               title={template.name}
-              subtitle={template.deckId}
+              subtitle={template.deckName}
               accessories={[
                 { text: `${template.variables.length} input${template.variables.length === 1 ? "" : "s"}` },
                 { text: `${aiFieldCount} AI field${aiFieldCount === 1 ? "" : "s"}` },

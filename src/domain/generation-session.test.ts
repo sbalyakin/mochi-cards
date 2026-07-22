@@ -140,6 +140,7 @@ function template(content: string): CardTemplate {
     ],
     content,
     deckId: "deck-1",
+    deckName: "Vocabulary",
     tags: [],
     reviewReverse: false,
     archived: false,

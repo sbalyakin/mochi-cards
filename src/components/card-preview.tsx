@@ -130,7 +130,7 @@ export function CardPreview({ template, initialSession }: CardPreviewProps) {
       metadata={
         <Detail.Metadata>
           <Detail.Metadata.Label title="Template" text={template.name} icon={Icon.Document} />
-          <Detail.Metadata.Label title="Deck" text={template.deckId} />
+          <Detail.Metadata.Label title="Deck" text={template.deckName} />
           <Detail.Metadata.Label
             title="Status"
             text={status}

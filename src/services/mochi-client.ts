@@ -1,6 +1,7 @@
 import { normalizeDeckId, type CardTemplate } from "../domain/template";
 
 const MOCHI_CARDS_URL = "https://app.mochi.cards/api/cards/";
+const MOCHI_DECKS_URL = "https://app.mochi.cards/api/decks";
 const DEFAULT_TIMEOUT_MS = 15_000;
 
 export type MochiErrorKind = "network" | "unauthorized" | "validation" | "http" | "aborted";
@@ -21,6 +22,16 @@ export type CreatedMochiCard = {
   readonly id?: string;
 };
 
+export type MochiDeck = {
+  readonly id: string;
+  readonly name: string;
+};
+
+type MochiDeckPage = {
+  readonly decks: readonly MochiDeck[];
+  readonly bookmark?: string;
+};
+
 export type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
 export class MochiClient {
@@ -35,6 +46,50 @@ export class MochiClient {
   }
 
   async createCard(content: string, template: CardTemplate, signal?: AbortSignal): Promise<CreatedMochiCard> {
+    const responseText = await this.request(
+      MOCHI_CARDS_URL,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          content,
+          "deck-id": normalizeDeckId(template.deckId),
+          "template-id": null,
+          "manual-tags": template.tags,
+          "review-reverse?": template.reviewReverse,
+          "archived?": template.archived,
+        }),
+      },
+      signal
+    );
+
+    return parseCreatedCard(responseText);
+  }
+
+  async listDecks(signal?: AbortSignal): Promise<readonly MochiDeck[]> {
+    const decks = new Map<string, MochiDeck>();
+    const bookmarks = new Set<string>();
+    let bookmark: string | undefined;
+
+    do {
+      const url = bookmark ? `${MOCHI_DECKS_URL}?bookmark=${encodeURIComponent(bookmark)}` : MOCHI_DECKS_URL;
+      const page = parseDeckPage(await this.request(url, { method: "GET" }, signal));
+      page.decks.forEach((deck) => decks.set(deck.id, deck));
+      if (page.bookmark && bookmarks.has(page.bookmark)) {
+        break;
+      }
+      bookmark = page.bookmark;
+      if (bookmark) {
+        bookmarks.add(bookmark);
+      }
+    } while (bookmark);
+
+    return [...decks.values()].sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  private async request(url: string, init: RequestInit, signal?: AbortSignal): Promise<string> {
     const requestController = new AbortController();
     const forwardAbort = (): void => requestController.abort(signal?.reason);
     if (signal?.aborted) {
@@ -48,20 +103,12 @@ export class MochiClient {
     );
 
     try {
-      const response = await this.fetch(MOCHI_CARDS_URL, {
-        method: "POST",
+      const response = await this.fetch(url, {
+        ...init,
         headers: {
+          ...init.headers,
           Authorization: `Basic ${Buffer.from(`${this.apiKey}:`).toString("base64")}`,
-          "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          content,
-          "deck-id": normalizeDeckId(template.deckId),
-          "template-id": null,
-          "manual-tags": template.tags,
-          "review-reverse?": template.reviewReverse,
-          "archived?": template.archived,
-        }),
         signal: requestController.signal,
       });
 
@@ -77,7 +124,7 @@ export class MochiClient {
         throw new MochiError("http", message, response.status);
       }
 
-      return parseCreatedCard(responseText);
+      return responseText;
     } catch (error: unknown) {
       if (error instanceof MochiError) {
         throw error;
@@ -93,6 +140,27 @@ export class MochiClient {
       clearTimeout(timeout);
       signal?.removeEventListener("abort", forwardAbort);
     }
+  }
+}
+
+function parseDeckPage(responseText: string): MochiDeckPage {
+  try {
+    const value: unknown = JSON.parse(responseText);
+    if (
+      !isRecord(value) ||
+      !Array.isArray(value.docs) ||
+      (value.bookmark !== undefined && typeof value.bookmark !== "string")
+    ) {
+      throw new Error("Mochi returned an invalid deck list");
+    }
+    return { decks: value.docs.filter(isMochiDeck), bookmark: value.bookmark };
+  } catch (error: unknown) {
+    if (error instanceof MochiError) {
+      throw error;
+    }
+    throw new MochiError("http", errorMessage(error, "Mochi returned an invalid deck list"), undefined, {
+      cause: error,
+    });
   }
 }
 
@@ -138,4 +206,8 @@ function errorMessage(error: unknown, fallback: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function isMochiDeck(value: unknown): value is MochiDeck {
+  return isRecord(value) && typeof value.id === "string" && typeof value.name === "string";
 }
