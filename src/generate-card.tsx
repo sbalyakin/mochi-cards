@@ -11,7 +11,7 @@ export default function GenerateCard() {
   const { data: templates = [], error, isLoading } = usePromise(() => repository.list(), []);
 
   return (
-    <List isLoading={isLoading} navigationTitle="Generate Card" searchBarPlaceholder="Choose a template">
+    <List isLoading={isLoading} navigationTitle="Create Card" searchBarPlaceholder="Choose a template">
       {templates.length === 0 ? (
         <List.EmptyView
           icon={error ? Icon.Warning : Icon.Stars}

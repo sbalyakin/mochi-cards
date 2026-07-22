@@ -76,7 +76,7 @@ export function GenerationInputForm({ template }: GenerationInputFormProps) {
       navigationTitle={template.name}
       actions={
         <ActionPanel>
-          <Action.SubmitForm title="Generate Card" icon={Icon.Stars} onSubmit={generate} />
+          <Action.SubmitForm title="Create Card" icon={Icon.Stars} onSubmit={generate} />
           {isGenerating ? (
             <Action
               title="Cancel Generation"

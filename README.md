@@ -22,7 +22,7 @@ Open Raycast, enable the development extension, and enter the Mochi API key in t
 ## How it works
 
 1. Create a template with variables, Markdown body, and a Mochi deck selected from your account.
-2. Run **Generate Card**, pick a template, and fill the form.
+2. Run **Create Card**, pick a template, and fill the form.
 3. The extension substitutes `<<variables>>`, calls AI for each `<ai>` block, and shows a preview.
 4. Regenerate one field, edit the Markdown by hand, or send the card to Mochi.
 
@@ -137,7 +137,7 @@ Not supported: conditionals, loops, filters, default values, typed variables, ne
 
 ## Commands
 
-- **Generate Card** — pick a template and create a card
+- **Create Card** — pick a template and create a card
 - **Manage Templates** — create, edit, duplicate, and delete templates
 
 ## Development

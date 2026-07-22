@@ -28,7 +28,7 @@ Choose the narrowest meaningful scope based on the changed subsystem.
 
 ### 1. Production subsystems
 - `templates`: Manage Templates command, template form, and template CRUD UI.
-- `generation`: Generate Card command, variable input form, and generation workflow wiring.
+- `generation`: Create Card command, variable input form, and generation workflow wiring.
 - `preview`: Markdown preview, regeneration actions, manual edit, copy, and save flows.
 - `engine`: Template parser, template engine, segment assembly, and variable substitution.
 - `validation`: Template validation rules and structured validation errors.

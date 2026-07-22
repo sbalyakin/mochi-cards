@@ -19,7 +19,7 @@
   "commands": [
     {
       "name": "generate-card",
-      "title": "Generate Card",
+      "title": "Create Card",
       "description": "Generate a Mochi card from a reusable template.",
       "mode": "view"
     },
