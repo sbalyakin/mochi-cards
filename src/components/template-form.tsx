@@ -51,16 +51,11 @@ export function TemplateForm({ repository, template, onSaved }: TemplateFormProp
   const [showValidation, setShowValidation] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const saving = useRef(false);
-  const {
-    data: decks = [],
-    error: decksError,
-    isLoading: isLoadingDecks,
-  } = usePromise(() => new MochiClient(mochiApiKey).listDecks(), []);
-  const {
-    data: mochiTemplates = [],
-    error: mochiTemplatesError,
-    isLoading: isLoadingMochiTemplates,
-  } = usePromise(() => new MochiClient(mochiApiKey).listTemplates(), []);
+  const { data: decks = [], error: decksError } = usePromise(() => new MochiClient(mochiApiKey).listDecks(), []);
+  const { data: mochiTemplates = [], error: mochiTemplatesError } = usePromise(
+    () => new MochiClient(mochiApiKey).listTemplates(),
+    []
+  );
 
   const selectedDeck = decks.find((deck) => deck.id === deckId);
   const selectedMochiTemplate = mochiTemplates.find((mochiTemplate) => mochiTemplate.id === mochiTemplateId);
@@ -208,7 +203,6 @@ export function TemplateForm({ repository, template, onSaved }: TemplateFormProp
           <Form.Dropdown.Item key={deck.id} title={deck.name} value={deck.id} icon={Icon.Book} />
         ))}
       </Form.Dropdown>
-      {isLoadingDecks ? <Form.Description title="Mochi Deck" text="Loading decks…" /> : null}
       {decksError ? <Form.Description title="Mochi Deck" text={errorMessage(decksError)} /> : null}
       <Form.Dropdown id="mochiTemplateId" title="Mochi Template" value={mochiTemplateId} onChange={setMochiTemplateId}>
         <Form.Dropdown.Item title="No Template" value={NO_TEMPLATE_VALUE} icon={Icon.CircleDisabled} />
@@ -224,7 +218,6 @@ export function TemplateForm({ repository, template, onSaved }: TemplateFormProp
           />
         ))}
       </Form.Dropdown>
-      {isLoadingMochiTemplates ? <Form.Description title="Mochi Template" text="Loading templates…" /> : null}
       {mochiTemplatesError ? (
         <Form.Description title="Mochi Template" text={errorMessage(mochiTemplatesError)} />
       ) : null}
@@ -253,7 +246,7 @@ export function TemplateForm({ repository, template, onSaved }: TemplateFormProp
       <Form.Separator />
       <Form.TextArea
         id="content"
-        title="Markdown Template"
+        title="Card Body"
         placeholder={"# <<word>>\n\n<ai>\nTranslate <<word>>.\n</ai>"}
         info="Use <<field>> placeholders and <ai>...</ai> fields"
         value={content}
