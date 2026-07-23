@@ -1,4 +1,4 @@
-import { Action, ActionPanel, Alert, confirmAlert, Icon, List, showToast, Toast } from "@raycast/api";
+import { Action, ActionPanel, Alert, confirmAlert, Icon, Keyboard, List, showToast, Toast } from "@raycast/api";
 import { usePromise } from "@raycast/utils";
 
 import { TemplateForm } from "./components/template-form";
@@ -55,6 +55,7 @@ export default function ManageTemplates() {
     <Action.Push
       title="Create Template"
       icon={Icon.Plus}
+      shortcut={Keyboard.Shortcut.Common.New}
       target={<TemplateForm repository={repository} onSaved={refresh} />}
     />
   );
@@ -87,14 +88,21 @@ export default function ManageTemplates() {
                   target={<TemplateForm repository={repository} template={template} onSaved={refresh} />}
                 />
                 {createAction}
-                <Action title="Duplicate Template" icon={Icon.Duplicate} onAction={() => duplicate(template)} />
                 <Action
-                  title="Delete Template"
-                  icon={Icon.Trash}
-                  style={Action.Style.Destructive}
-                  shortcut={{ modifiers: ["ctrl"], key: "x" }}
-                  onAction={() => deleteTemplate(template)}
+                  title="Duplicate Template"
+                  icon={Icon.Duplicate}
+                  shortcut={{ modifiers: ["cmd"], key: "d" }}
+                  onAction={() => duplicate(template)}
                 />
+                <ActionPanel.Section title="Danger Zone">
+                  <Action
+                    title="Delete Template"
+                    icon={Icon.Trash}
+                    style={Action.Style.Destructive}
+                    shortcut={{ modifiers: ["cmd"], key: "backspace" }}
+                    onAction={() => deleteTemplate(template)}
+                  />
+                </ActionPanel.Section>
               </ActionPanel>
             }
           />
