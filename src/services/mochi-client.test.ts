@@ -222,6 +222,28 @@ describe("MochiClient", () => {
     });
   });
 
+  it("excludes trashed cards", async () => {
+    const client = new MochiClient(
+      "key",
+      async () =>
+        new Response(
+          JSON.stringify({
+            docs: [
+              { id: "active-card", "deck-id": "deck-1", content: "# Active" },
+              {
+                id: "trashed-card",
+                "deck-id": "deck-1",
+                content: "# Trashed",
+                "trashed?": { date: "2026-07-18T20:11:14.657Z" },
+              },
+            ],
+          })
+        )
+    );
+
+    await expect(client.listCards("deck-1")).resolves.toEqual([expect.objectContaining({ id: "active-card" })]);
+  });
+
   it("rejects invalid card responses", async () => {
     const client = new MochiClient("key", async () => new Response(JSON.stringify({ docs: "invalid" })));
 

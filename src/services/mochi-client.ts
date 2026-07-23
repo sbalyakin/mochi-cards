@@ -388,6 +388,7 @@ function isMochiDeck(value: unknown): value is MochiDeck {
 function parseMochiCard(value: unknown): MochiCard | undefined {
   if (
     !isRecord(value) ||
+    Object.prototype.hasOwnProperty.call(value, "trashed?") ||
     typeof value.id !== "string" ||
     typeof value["deck-id"] !== "string" ||
     typeof value.content !== "string"
