@@ -1,3 +1,5 @@
+import { execFileSync } from "node:child_process";
+
 import {
   Action,
   ActionPanel,
@@ -25,6 +27,8 @@ import { MochiCatalogRepository, type MochiCatalog, type MochiCatalogItem } from
 
 const deckSelectionRepository = new DeckSelectionRepository();
 const mochiCatalogRepository = new MochiCatalogRepository();
+const dateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
+const dateTimeFormatter = createDateTimeFormatter();
 const EMPTY_ICON = "blank-icon.svg";
 const CARD_FILTER_OPTIONS = [
   { value: "all", title: "All Cards" },
@@ -443,29 +447,32 @@ function CardDetail({
   readonly deck: MochiDeck;
   readonly templateName?: string;
 }) {
+  const latestReviewDate = lastReviewDate(card);
+  const hasSameCreatedAndUpdatedTime = datesMatchWithinMinute(card.createdAt, card.updatedAt);
+
   return (
     <List.Item.Detail
       markdown={cardMarkdown(card)}
       metadata={
         <List.Item.Detail.Metadata>
-          <List.Item.Detail.Metadata.Label title="Deck" text={deck.name} icon={Icon.Book} />
-          <List.Item.Detail.Metadata.Label title="Card ID" text={card.id} />
           {card.createdAt ? (
             <List.Item.Detail.Metadata.Label title="Created" text={formatDate(card.createdAt)} />
           ) : null}
-          {card.updatedAt ? (
+          {card.updatedAt && !hasSameCreatedAndUpdatedTime ? (
             <List.Item.Detail.Metadata.Label title="Updated" text={formatDate(card.updatedAt)} />
           ) : null}
+          {latestReviewDate ? (
+            <List.Item.Detail.Metadata.Label title="Last Reviewed" text={formatDateOnly(latestReviewDate)} />
+          ) : null}
+          <List.Item.Detail.Metadata.Label title="Review Count" text={String(card.reviews.length)} />
           {card.templateId ? (
             <List.Item.Detail.Metadata.Label
               title="Template"
               text={templateName ?? "Unavailable Template"}
-              icon={Icon.Document}
+              icon={Icon.Box}
             />
           ) : null}
-          {card.archived !== undefined ? (
-            <List.Item.Detail.Metadata.Label title="Archived" text={card.archived ? "Yes" : "No"} />
-          ) : null}
+          {card.archived ? <List.Item.Detail.Metadata.Label title="Archived" text="Yes" /> : null}
           {card.tags.length > 0 ? (
             <List.Item.Detail.Metadata.TagList title="Tags">
               {card.tags.map((tag) => (
@@ -473,6 +480,7 @@ function CardDetail({
               ))}
             </List.Item.Detail.Metadata.TagList>
           ) : null}
+          <List.Item.Detail.Metadata.Label title="Deck" text={deck.name} icon={Icon.Book} />
         </List.Item.Detail.Metadata>
       }
     />
@@ -490,7 +498,55 @@ function cardMarkdown(card: MochiCard): string {
 }
 
 function formatDate(value: string): string {
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+  return dateTimeFormatter.format(new Date(value));
+}
+
+function formatDateOnly(value: string): string {
+  return dateFormatter.format(new Date(value));
+}
+
+function createDateTimeFormatter(): Intl.DateTimeFormat {
+  const hourCycle = systemHourCycle();
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+    ...(hourCycle ? { hourCycle } : {}),
+  });
+}
+
+function systemHourCycle(): "h12" | "h23" | undefined {
+  try {
+    const setting = execFileSync("/usr/bin/defaults", ["read", "-g", "AppleICUForce24HourTime"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    })
+      .trim()
+      .toLowerCase();
+    if (setting === "1" || setting === "true") {
+      return "h23";
+    }
+    if (setting === "0" || setting === "false") {
+      return "h12";
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
+function lastReviewDate(card: MochiCard): string | undefined {
+  return card.reviews.reduce<string | undefined>(
+    (latest, review) => (latest === undefined || review.date > latest ? review.date : latest),
+    undefined
+  );
+}
+
+function datesMatchWithinMinute(left: string | undefined, right: string | undefined): boolean {
+  if (!left || !right) {
+    return false;
+  }
+  const difference = Math.abs(Date.parse(left) - Date.parse(right));
+  return Number.isFinite(difference) && difference < 60_000;
 }
 
 function mochiErrorMessage(error: unknown): string {
