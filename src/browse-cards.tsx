@@ -374,6 +374,19 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
     }
   }
 
+  async function reloadCards(): Promise<void> {
+    try {
+      await revalidate();
+      await showToast({ style: Toast.Style.Success, title: "Cards Reloaded" });
+    } catch (error: unknown) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Could Not Reload Cards",
+        message: mochiErrorMessage(error),
+      });
+    }
+  }
+
   return (
     <List
       isLoading={isLoading || isDeletingCard}
@@ -441,7 +454,7 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
                   title="Reload Cards"
                   icon={Icon.ArrowClockwise}
                   shortcut={Keyboard.Shortcut.Common.Refresh}
-                  onAction={revalidate}
+                  onAction={reloadCards}
                 />
               )}
             </ActionPanel>
@@ -481,7 +494,7 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
                     title="Reload Cards"
                     icon={Icon.ArrowClockwise}
                     shortcut={Keyboard.Shortcut.Common.Refresh}
-                    onAction={revalidate}
+                    onAction={reloadCards}
                   />
                   <ActionPanel.Section title="Danger Zone">
                     <Action
