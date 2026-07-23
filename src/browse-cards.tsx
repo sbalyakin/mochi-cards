@@ -1,7 +1,18 @@
-import { Action, ActionPanel, getPreferenceValues, Icon, List, showToast, Toast, useNavigation } from "@raycast/api";
+import {
+  Action,
+  ActionPanel,
+  getPreferenceValues,
+  Icon,
+  Keyboard,
+  List,
+  showToast,
+  Toast,
+  useNavigation,
+} from "@raycast/api";
 import { usePromise } from "@raycast/utils";
 import { useEffect, useRef, useState } from "react";
 
+import { CARD_SORT_OPTIONS, cardTitle, isCardSort, isSortDescending, sortCards, type CardSort } from "./card-sorting";
 import {
   isMochiDeckNotFoundError,
   MochiClient,
@@ -14,6 +25,22 @@ import { MochiCatalogRepository, type MochiCatalog, type MochiCatalogItem } from
 
 const deckSelectionRepository = new DeckSelectionRepository();
 const mochiCatalogRepository = new MochiCatalogRepository();
+const EMPTY_ICON = "blank-icon.svg";
+const CARD_FILTER_OPTIONS = [
+  { value: "all", title: "All Cards" },
+  { value: "reviewed", title: "Reviewed Only" },
+  { value: "not-reviewed", title: "Not Reviewed Only" },
+] as const;
+const CARD_SORT_ICONS: Readonly<Record<CardSort, Icon>> = {
+  position: Icon.StackedBars4,
+  alphabetical: Icon.Uppercase,
+  "created-at": Icon.Calendar,
+  "updated-at": Icon.Pencil,
+  "last-reviewed": Icon.CheckCircle,
+  "review-count": Icon.CheckList,
+};
+
+type CardFilter = (typeof CARD_FILTER_OPTIONS)[number]["value"];
 
 export default function BrowseCards() {
   const { mochiApiKey } = getPreferenceValues<Preferences.BrowseCards>();
@@ -258,6 +285,9 @@ type CardListProps = {
 function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
   const { pop } = useNavigation();
   const abortable = useRef<AbortController | undefined>(undefined);
+  const [sort, setSort] = useState<CardSort>("position");
+  const [isSortReversed, setIsSortReversed] = useState(false);
+  const [filter, setFilter] = useState<CardFilter>("all");
   const {
     data: cards = [],
     error,
@@ -273,19 +303,82 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
   });
   const isDeckNotFound = isMochiDeckNotFoundError(error);
   const templateNamesById = new Map(templates.map((template) => [template.id, template.name]));
+  const sortedCards = sortCards(cards, sort, isSortReversed);
+  const visibleCards = sortedCards.filter((card) => matchesFilter(card, filter));
+  const isCurrentSortDescending = isSortDescending(sort, isSortReversed);
+
+  function selectViewOption(value: string): void {
+    if (isCardFilter(value)) {
+      setFilter(value);
+      return;
+    }
+    if (isCardSort(value)) {
+      if (value === sort) {
+        setIsSortReversed((reversed) => !reversed);
+      } else {
+        setSort(value);
+        setIsSortReversed(false);
+      }
+    }
+  }
 
   return (
-    <List isLoading={isLoading} isShowingDetail navigationTitle={deck.name} searchBarPlaceholder="Search cards">
-      {error || cards.length === 0 ? (
+    <List
+      isLoading={isLoading}
+      isShowingDetail
+      navigationTitle={
+        filter === "all" ? deck.name : `${deck.name} · ${filter === "reviewed" ? "Reviewed" : "Not Reviewed"}`
+      }
+      searchBarAccessory={
+        <List.Dropdown tooltip="Sort and Filter Cards" value={sort} onChange={selectViewOption}>
+          <List.Dropdown.Section title="Sort by">
+            {CARD_SORT_OPTIONS.map((option) => (
+              <List.Dropdown.Item
+                key={option.value}
+                icon={CARD_SORT_ICONS[option.value]}
+                title={option.value === sort && isCurrentSortDescending ? `${option.title} (desc)` : option.title}
+                value={option.value}
+              />
+            ))}
+          </List.Dropdown.Section>
+          <List.Dropdown.Section title="Show">
+            {CARD_FILTER_OPTIONS.map((option) => (
+              <List.Dropdown.Item
+                key={option.value}
+                icon={filter === option.value ? Icon.Checkmark : EMPTY_ICON}
+                title={option.title}
+                value={option.value}
+              />
+            ))}
+          </List.Dropdown.Section>
+        </List.Dropdown>
+      }
+      searchBarPlaceholder="Search cards"
+    >
+      {error || cards.length === 0 || visibleCards.length === 0 ? (
         <List.EmptyView
           icon={error ? Icon.Warning : Icon.Document}
-          title={error ? (isDeckNotFound ? "Deck Not Found" : "Could Not Load Cards") : "No Cards in This Deck"}
+          title={
+            error
+              ? isDeckNotFound
+                ? "Deck Not Found"
+                : "Could Not Load Cards"
+              : cards.length === 0
+                ? "No Cards in This Deck"
+                : filter === "reviewed"
+                  ? "No Reviewed Cards"
+                  : "No Cards Without Reviews"
+          }
           description={
             error
               ? isDeckNotFound
                 ? "This cached deck no longer exists in Mochi. The deck cache was cleared."
                 : mochiErrorMessage(error)
-              : "Cards added to this deck will appear here."
+              : cards.length === 0
+                ? "Cards added to this deck will appear here."
+                : filter === "reviewed"
+                  ? "Review a card in Mochi to show it here."
+                  : "Every card in this deck has at least one review."
           }
           actions={
             <ActionPanel>
@@ -298,7 +391,7 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
           }
         />
       ) : (
-        cards.map((card) => (
+        visibleCards.map((card) => (
           <List.Item
             key={card.id}
             icon={card.archived ? Icon.CircleDisabled : Icon.Document}
@@ -314,6 +407,12 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
             actions={
               <ActionPanel>
                 <Action.CopyToClipboard title="Copy Card Markdown" content={cardMarkdown(card)} />
+                <Action
+                  title={isSortReversed ? "Use Default Sort Order" : "Reverse Sort Order"}
+                  icon={isSortReversed ? Icon.ArrowUp : Icon.ArrowDown}
+                  onAction={() => setIsSortReversed((reversed) => !reversed)}
+                  shortcut={Keyboard.Shortcut.Common.Open}
+                />
                 <Action title="Reload Cards" icon={Icon.ArrowClockwise} onAction={revalidate} />
               </ActionPanel>
             }
@@ -322,6 +421,17 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
       )}
     </List>
   );
+}
+
+function isCardFilter(value: string): value is CardFilter {
+  return CARD_FILTER_OPTIONS.some((option) => option.value === value);
+}
+
+function matchesFilter(card: MochiCard, filter: CardFilter): boolean {
+  if (filter === "all") {
+    return true;
+  }
+  return filter === "reviewed" ? card.reviews.length > 0 : card.reviews.length === 0;
 }
 
 function CardDetail({
@@ -367,28 +477,6 @@ function CardDetail({
       }
     />
   );
-}
-
-function cardTitle(card: MochiCard): string {
-  const name = card.name?.trim();
-  if (name) {
-    return name;
-  }
-
-  const firstLine = card.content
-    .split("\n")
-    .map((line) => line.trim())
-    .find(Boolean);
-  if (firstLine) {
-    return firstLine
-      .replace(/^#{1,6}\s+/, "")
-      .replace(/^[-*+]\s+/, "")
-      .replace(/[*_~`]/g, "")
-      .trim();
-  }
-
-  const firstField = card.fields.find((field) => field.value.trim().length > 0);
-  return firstField?.value.trim().split("\n")[0] ?? "Untitled Card";
 }
 
 function cardMarkdown(card: MochiCard): string {

@@ -46,6 +46,10 @@ export type MochiCardField = {
   readonly value: string;
 };
 
+export type MochiCardReview = {
+  readonly date: string;
+};
+
 export type MochiCard = {
   readonly id: string;
   readonly deckId: string;
@@ -55,6 +59,8 @@ export type MochiCard = {
   readonly fields: readonly MochiCardField[];
   readonly createdAt?: string;
   readonly updatedAt?: string;
+  readonly position?: string;
+  readonly reviews: readonly MochiCardReview[];
   readonly archived?: boolean;
   readonly templateId?: string | null;
 };
@@ -404,6 +410,8 @@ function parseMochiCard(value: unknown): MochiCard | undefined {
     fields: parseCardFields(value.fields),
     createdAt: parseMochiDate(value["created-at"]),
     updatedAt: parseMochiDate(value["updated-at"]),
+    position: typeof value.pos === "string" ? value.pos : undefined,
+    reviews: parseCardReviews(value.reviews),
     archived,
     templateId,
   };
@@ -419,6 +427,20 @@ function parseCardFields(value: unknown): readonly MochiCardField[] {
       return [];
     }
     return [{ id: field.id, value: field.value }];
+  });
+}
+
+function parseCardReviews(value: unknown): readonly MochiCardReview[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((review) => {
+    if (!isRecord(review)) {
+      return [];
+    }
+    const date = parseMochiDate(review.date);
+    return date ? [{ date }] : [];
   });
 }
 
