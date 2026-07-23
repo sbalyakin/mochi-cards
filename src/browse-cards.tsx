@@ -14,7 +14,7 @@ import {
   Toast,
   useNavigation,
 } from "@raycast/api";
-import { usePromise } from "@raycast/utils";
+import { useCachedPromise, usePromise } from "@raycast/utils";
 import { useEffect, useRef, useState } from "react";
 
 import { CARD_SORT_OPTIONS, cardTitle, isCardSort, isSortDescending, sortCards, type CardSort } from "./card-sorting";
@@ -303,20 +303,30 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
   const [isShowingMetadata, setIsShowingMetadata] = useState(true);
   const [isDeletingCard, setIsDeletingCard] = useState(false);
   const isDeletingCardRef = useRef(false);
+  const hasCardsRef = useRef(false);
   const {
     data: cards = [],
     error,
     isLoading,
     revalidate,
-  } = usePromise(() => client.listCards(deck.id, abortable.current?.signal), [], {
+  } = useCachedPromise((deckId: string) => client.listCards(deckId, abortable.current?.signal), [deck.id], {
     abortable,
-    onError(error) {
+    initialData: [],
+    async onError(error) {
       if (isMochiDeckNotFoundError(error)) {
         onDeckNotFound();
+      } else if (hasCardsRef.current) {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: "Could Not Refresh Cards",
+          message: mochiErrorMessage(error),
+        });
       }
     },
   });
+  hasCardsRef.current = cards.length > 0;
   const isDeckNotFound = isMochiDeckNotFoundError(error);
+  const visibleError = isDeckNotFound || cards.length === 0 ? error : undefined;
   const templatesById = new Map(templates.map((template) => [template.id, template]));
   const sortedCards = sortCards(cards, sort, isSortReversed);
   const visibleCards = sortedCards.filter((card) => matchesFilter(card, filter));
@@ -421,11 +431,11 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
       }
       searchBarPlaceholder="Search cards"
     >
-      {error || cards.length === 0 || visibleCards.length === 0 ? (
+      {visibleError || cards.length === 0 || visibleCards.length === 0 ? (
         <List.EmptyView
-          icon={error ? Icon.Warning : Icon.Document}
+          icon={visibleError ? Icon.Warning : Icon.Document}
           title={
-            error
+            visibleError
               ? isDeckNotFound
                 ? "Deck Not Found"
                 : "Could Not Load Cards"
@@ -436,10 +446,10 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
                   : "No Cards Without Reviews"
           }
           description={
-            error
+            visibleError
               ? isDeckNotFound
                 ? "This cached deck no longer exists in Mochi. The deck cache was cleared."
-                : mochiErrorMessage(error)
+                : mochiErrorMessage(visibleError)
               : cards.length === 0
                 ? "Cards added to this deck will appear here."
                 : filter === "reviewed"

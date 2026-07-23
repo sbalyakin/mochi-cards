@@ -141,8 +141,9 @@ Not supported: conditionals, loops, filters, default values, typed variables, ne
 - **Manage Templates** — create, edit, duplicate, and delete templates
 - **Browse Cards** — choose visible decks and browse their cards with a detail preview
 
-Browse Cards caches the Mochi deck and template catalog locally. Use **Reload Decks** to refresh it explicitly;
-card content is fetched when a deck is opened.
+Browse Cards caches the Mochi deck and template catalog locally. Use **Reload Decks** to refresh it explicitly.
+Card lists are also cached per deck: cached cards appear immediately, then refresh from Mochi in the background and
+update in the open list when they change. An empty or missing cache is loaded from Mochi normally.
 
 ## Development
 
