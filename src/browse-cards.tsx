@@ -434,7 +434,12 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
               {isDeckNotFound ? (
                 <Action title="Back to Decks" icon={Icon.ArrowLeft} onAction={pop} />
               ) : (
-                <Action title="Reload Cards" icon={Icon.ArrowClockwise} onAction={revalidate} />
+                <Action
+                  title="Reload Cards"
+                  icon={Icon.ArrowClockwise}
+                  shortcut={Keyboard.Shortcut.Common.Refresh}
+                  onAction={revalidate}
+                />
               )}
             </ActionPanel>
           }
@@ -451,14 +456,23 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
               detail={<CardDetail card={card} deck={deck} template={template} />}
               actions={
                 <ActionPanel>
-                  <Action.CopyToClipboard title="Copy Card Markdown" content={cardMarkdown(card, template)} />
+                  <Action.CopyToClipboard
+                    title="Copy Card Markdown"
+                    content={cardMarkdown(card, template)}
+                    shortcut={Keyboard.Shortcut.Common.Copy}
+                  />
                   <Action
                     title={isSortReversed ? "Use Default Sort Order" : "Reverse Sort Order"}
                     icon={isSortReversed ? Icon.ArrowUp : Icon.ArrowDown}
                     onAction={() => setIsSortReversed((reversed) => !reversed)}
                     shortcut={Keyboard.Shortcut.Common.Open}
                   />
-                  <Action title="Reload Cards" icon={Icon.ArrowClockwise} onAction={revalidate} />
+                  <Action
+                    title="Reload Cards"
+                    icon={Icon.ArrowClockwise}
+                    shortcut={Keyboard.Shortcut.Common.Refresh}
+                    onAction={revalidate}
+                  />
                   <ActionPanel.Section title="Danger Zone">
                     <Action
                       title="Delete Card"
