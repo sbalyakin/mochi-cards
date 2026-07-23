@@ -488,7 +488,7 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
               key={card.id}
               icon={card.archived ? Icon.CircleDisabled : Icon.Document}
               title={cardTitle(card)}
-              keywords={[card.content, ...card.tags, ...card.fields.map((field) => field.value)]}
+              keywords={[card.content, ...card.tags, ...card.fields.map((field) => String(field.value))]}
               detail={<CardDetail card={card} deck={deck} template={template} showMetadata={isShowingMetadata} />}
               actions={
                 <ActionPanel>
@@ -677,7 +677,7 @@ function CardDetail({
               <List.Item.Detail.Metadata.Label
                 key={field.id}
                 title={templateFieldNamesById.get(field.id) || field.id}
-                text={field.value}
+                text={String(field.value)}
               />
             ))}
             {card.tags.length > 0 ? (

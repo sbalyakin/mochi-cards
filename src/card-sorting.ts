@@ -39,8 +39,8 @@ export function cardTitle(card: MochiCard): string {
       .trim();
   }
 
-  const firstField = card.fields.find((field) => field.value.trim().length > 0);
-  return firstField?.value.trim().split("\n")[0] ?? "Untitled Card";
+  const firstField = card.fields.find((field) => String(field.value).trim().length > 0);
+  return firstField ? String(firstField.value).trim().split("\n")[0] : "Untitled Card";
 }
 
 export function sortCards(cards: readonly MochiCard[], sort: CardSort, reversed = false): readonly MochiCard[] {

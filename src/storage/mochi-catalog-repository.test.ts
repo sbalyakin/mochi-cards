@@ -64,7 +64,7 @@ describe("MochiCatalogRepository", () => {
   });
 
   it("keeps corrupted storage unchanged", () => {
-    storage.value = JSON.stringify({ version: 2, decks: "invalid", templates: [] });
+    storage.value = JSON.stringify({ version: 3, decks: "invalid", templates: [] });
     const original = storage.value;
 
     expect(() => repository.get()).toThrow(MochiCatalogRepositoryError);
@@ -72,7 +72,7 @@ describe("MochiCatalogRepository", () => {
   });
 
   it("invalidates the previous catalog version", () => {
-    storage.value = JSON.stringify({ version: 1, decks: [], templates: [] });
+    storage.value = JSON.stringify({ version: 2, decks: [], templates: [] });
 
     expect(repository.get()).toBeUndefined();
   });

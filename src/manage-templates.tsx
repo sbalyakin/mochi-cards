@@ -77,6 +77,9 @@ export default function ManageTemplates() {
             title={template.name}
             subtitle={template.deckName}
             accessories={[
+              ...(template.output.kind === "mochi-template" && template.output.target.status === "needs-configuration"
+                ? [{ tag: { value: "Needs Mapping", color: "orange" } }]
+                : []),
               { text: `${template.fields.length} field${template.fields.length === 1 ? "" : "s"}` },
               ...(template.tags.length > 0 ? [{ tag: template.tags[0] }] : []),
             ]}

@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { CardTemplate } from "../domain/template";
-import { isMochiDeckNotFoundError, MochiClient, MochiError, type FetchLike } from "./mochi-client";
+import {
+  isMochiDeckNotFoundError,
+  MochiClient,
+  MochiError,
+  type CreateMochiCardRequest,
+  type FetchLike,
+} from "./mochi-client";
 
 describe("MochiClient", () => {
   it("posts the expected payload with HTTP Basic authentication", async () => {
@@ -12,7 +17,7 @@ describe("MochiClient", () => {
       );
     const client = new MochiClient("secret-key", fetch);
 
-    await expect(client.createCard("# Card", template())).resolves.toEqual({ id: "card-1" });
+    await expect(client.createCard(createRequest())).resolves.toEqual({ id: "card-1" });
     expect(fetch).toHaveBeenCalledOnce();
     const [url, init] = fetch.mock.calls[0];
     expect(url).toBe("https://app.mochi.cards/api/cards/");
@@ -24,7 +29,6 @@ describe("MochiClient", () => {
     expect(JSON.parse(String(init?.body))).toEqual({
       content: "# Card",
       "deck-id": "deck-1",
-      "template-id": null,
       "manual-tags": ["greek"],
       "review-reverse?": true,
       "archived?": false,
@@ -35,10 +39,25 @@ describe("MochiClient", () => {
     const fetch = vi.fn<FetchLike>().mockResolvedValue(new Response("", { status: 201 }));
     const client = new MochiClient("secret-key", fetch);
 
-    await client.createCard("# Card", template({ mochiTemplateId: "mochi-template-1" }));
+    await client.createCard(
+      createRequest({
+        output: {
+          kind: "mochi-template",
+          templateId: "mochi-template-1",
+          fields: { front: "Hello", active: true },
+        },
+      })
+    );
 
     const [, init] = fetch.mock.calls[0];
-    expect(JSON.parse(String(init?.body))).toMatchObject({ "template-id": "mochi-template-1" });
+    expect(JSON.parse(String(init?.body))).toMatchObject({
+      content: "",
+      "template-id": "mochi-template-1",
+      fields: {
+        front: { id: "front", value: "Hello" },
+        active: { id: "active", value: true },
+      },
+    });
   });
 
   it("deletes a card", async () => {
@@ -90,8 +109,8 @@ describe("MochiClient", () => {
       async () => new Response(JSON.stringify({ message: "deck-id is invalid" }), { status: 422 })
     );
 
-    await expect(unauthorized.createCard("card", template())).rejects.toMatchObject({ kind: "unauthorized" });
-    await expect(invalid.createCard("card", template())).rejects.toMatchObject({
+    await expect(unauthorized.createCard(createRequest())).rejects.toMatchObject({ kind: "unauthorized" });
+    await expect(invalid.createCard(createRequest())).rejects.toMatchObject({
       kind: "validation",
       message: "deck-id is invalid",
     });
@@ -264,7 +283,7 @@ describe("MochiClient", () => {
         id: "template-2",
         name: "Words",
         content: "# << Word >>",
-        fields: [{ id: "word", name: "word" }],
+        fields: [{ id: "word", name: "word", type: "text", multiline: false }],
       },
     ]);
     expect(fetch).toHaveBeenNthCalledWith(
@@ -277,6 +296,58 @@ describe("MochiClient", () => {
       "https://app.mochi.cards/api/templates/?bookmark=next-page",
       expect.objectContaining({ method: "GET" })
     );
+  });
+
+  it("loads one template with raw field types, multiline options, and lexical positions", async () => {
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "template-1",
+          name: "Typed",
+          fields: {
+            boolean: {
+              id: "boolean",
+              name: "Enabled",
+              type: "boolean",
+              pos: "B",
+              options: { "multi-line?": true },
+            },
+            unknown: { id: "unknown", name: "Future", type: "future", pos: "C" },
+            text: { id: "text", name: "Text", pos: "A" },
+          },
+        })
+      )
+    );
+    const client = new MochiClient("key", fetch);
+
+    await expect(client.getTemplate("template-1")).resolves.toMatchObject({
+      fields: [
+        { id: "text", type: "text", pos: "A", multiline: false },
+        { id: "boolean", type: "boolean", pos: "B", multiline: true },
+        { id: "unknown", type: "future", pos: "C", multiline: false },
+      ],
+    });
+    expect(fetch).toHaveBeenCalledWith(
+      "https://app.mochi.cards/api/templates/template-1",
+      expect.objectContaining({ method: "GET" })
+    );
+  });
+
+  it("parses boolean card field values", async () => {
+    const client = new MochiClient(
+      "key",
+      async () =>
+        new Response(
+          JSON.stringify({
+            id: "card",
+            "deck-id": "deck",
+            content: "",
+            fields: { active: { id: "active", value: true } },
+          })
+        )
+    );
+
+    await expect(client.getCard("card")).resolves.toMatchObject({ fields: [{ id: "active", value: true }] });
   });
 
   it("rejects invalid deck responses", async () => {
@@ -324,23 +395,17 @@ describe("MochiClient", () => {
       throw new Error("offline");
     });
 
-    await expect(client.createCard("card", template())).rejects.toMatchObject({ kind: "network", message: "offline" });
+    await expect(client.createCard(createRequest())).rejects.toMatchObject({ kind: "network", message: "offline" });
   });
 });
 
-function template(overrides: Partial<CardTemplate> = {}): CardTemplate {
+function createRequest(overrides: Partial<CreateMochiCardRequest> = {}): CreateMochiCardRequest {
   return {
-    id: "template-1",
-    name: "Greek",
-    fields: [],
-    content: "# Card",
     deckId: "[[deck-1]]",
-    deckName: "Greek",
-    mochiTemplateId: null,
     tags: ["greek"],
     reviewReverse: true,
     archived: false,
-    updatedAt: "2026-07-22T00:00:00.000Z",
+    output: { kind: "card-body", content: "# Card" },
     ...overrides,
   };
 }

@@ -1,4 +1,4 @@
-import { normalizeDeckId, type CardTemplate } from "../domain/template";
+import { normalizeDeckId, type FieldValue, type MochiTemplateSnapshot } from "../domain/template";
 
 const MOCHI_CARDS_URL = "https://app.mochi.cards/api/cards/";
 const MOCHI_DECKS_URL = "https://app.mochi.cards/api/decks";
@@ -43,7 +43,7 @@ export type MochiDeck = {
 
 export type MochiCardField = {
   readonly id: string;
-  readonly value: string;
+  readonly value: FieldValue;
 };
 
 export type MochiCardReview = {
@@ -72,16 +72,31 @@ export type MochiCard = {
   readonly templateId?: string | null;
 };
 
-export type MochiTemplateField = {
-  readonly id: string;
-  readonly name: string;
-};
+export type MochiTemplateField = MochiTemplateSnapshot["fields"][number];
 
 export type MochiTemplate = {
   readonly id: string;
   readonly name: string;
   readonly content?: string;
   readonly fields: readonly MochiTemplateField[];
+};
+
+export function toMochiTemplateSnapshot(template: MochiTemplate): MochiTemplateSnapshot {
+  return { id: template.id, name: template.name, fields: template.fields };
+}
+
+export type CreateMochiCardRequest = {
+  readonly deckId: string;
+  readonly tags: readonly string[];
+  readonly reviewReverse: boolean;
+  readonly archived: boolean;
+  readonly output:
+    | { readonly kind: "card-body"; readonly content: string }
+    | {
+        readonly kind: "mochi-template";
+        readonly templateId: string;
+        readonly fields: Readonly<Record<string, FieldValue>>;
+      };
 };
 
 type MochiCardPage = {
@@ -112,7 +127,15 @@ export class MochiClient {
     this.timeoutMs = timeoutMs;
   }
 
-  async createCard(content: string, template: CardTemplate, signal?: AbortSignal): Promise<CreatedMochiCard> {
+  async createCard(request: CreateMochiCardRequest, signal?: AbortSignal): Promise<CreatedMochiCard> {
+    const outputPayload =
+      request.output.kind === "card-body"
+        ? { content: request.output.content }
+        : {
+            content: "",
+            "template-id": request.output.templateId,
+            fields: Object.fromEntries(Object.entries(request.output.fields).map(([id, value]) => [id, { id, value }])),
+          };
     const responseText = await this.request(
       MOCHI_CARDS_URL,
       {
@@ -121,12 +144,11 @@ export class MochiClient {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          content,
-          "deck-id": normalizeDeckId(template.deckId),
-          "template-id": template.mochiTemplateId,
-          "manual-tags": template.tags,
-          "review-reverse?": template.reviewReverse,
-          "archived?": template.archived,
+          ...outputPayload,
+          "deck-id": normalizeDeckId(request.deckId),
+          "manual-tags": request.tags,
+          "review-reverse?": request.reviewReverse,
+          "archived?": request.archived,
         }),
       },
       signal
@@ -220,6 +242,12 @@ export class MochiClient {
     } while (bookmark);
 
     return [...templates.values()].sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  async getTemplate(templateId: string, signal?: AbortSignal): Promise<MochiTemplate> {
+    return parseMochiTemplateResponse(
+      await this.request(`${MOCHI_TEMPLATES_URL}${encodeURIComponent(templateId)}`, { method: "GET" }, signal)
+    );
   }
 
   private async request(url: string, init: RequestInit, signal?: AbortSignal): Promise<string> {
@@ -366,6 +394,23 @@ function parseTemplatePage(responseText: string): MochiTemplatePage {
   }
 }
 
+function parseMochiTemplateResponse(responseText: string): MochiTemplate {
+  try {
+    const template = parseMochiTemplate(JSON.parse(responseText));
+    if (!template) {
+      throw new Error("Mochi returned an invalid template");
+    }
+    return template;
+  } catch (error: unknown) {
+    if (error instanceof MochiError) {
+      throw error;
+    }
+    throw new MochiError("http", errorMessage(error, "Mochi returned an invalid template"), undefined, {
+      cause: error,
+    });
+  }
+}
+
 function parseCreatedCard(responseText: string): CreatedMochiCard {
   if (responseText.trim().length === 0) {
     return {};
@@ -476,7 +521,11 @@ function parseCardFields(value: unknown): readonly MochiCardField[] {
   }
 
   return Object.values(value).flatMap((field) => {
-    if (!isRecord(field) || typeof field.id !== "string" || typeof field.value !== "string") {
+    if (
+      !isRecord(field) ||
+      typeof field.id !== "string" ||
+      (typeof field.value !== "string" && typeof field.value !== "boolean")
+    ) {
       return [];
     }
     return [{ id: field.id, value: field.value }];
@@ -535,10 +584,29 @@ function parseMochiTemplateFields(value: unknown): readonly MochiTemplateField[]
     return [];
   }
 
-  return Object.values(value).flatMap((field) => {
-    if (!isRecord(field) || typeof field.id !== "string") {
-      return [];
-    }
-    return [{ id: field.id, name: typeof field.name === "string" ? field.name : field.id }];
-  });
+  return Object.values(value)
+    .flatMap((field, index) => {
+      if (!isRecord(field) || typeof field.id !== "string") {
+        return [];
+      }
+      const options = isRecord(field.options) ? field.options : undefined;
+      return [
+        {
+          id: field.id,
+          name: typeof field.name === "string" ? field.name : field.id,
+          type: typeof field.type === "string" && field.type.length > 0 ? field.type : "text",
+          ...(typeof field.pos === "string" ? { pos: field.pos } : {}),
+          multiline: options?.["multi-line?"] === true,
+          index,
+        },
+      ];
+    })
+    .sort((left, right) => (left.pos ?? "").localeCompare(right.pos ?? "") || left.index - right.index)
+    .map((field): MochiTemplateField => ({
+      id: field.id,
+      name: field.name,
+      type: field.type,
+      ...(field.pos === undefined ? {} : { pos: field.pos }),
+      multiline: field.multiline,
+    }));
 }

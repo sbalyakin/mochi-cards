@@ -70,6 +70,7 @@ describe("TemplateRepository", () => {
       templates: [
         {
           ...created,
+          content: created.cardBody,
           deckId: "[[legacy-deck]]",
           deckName: undefined,
           mochiTemplateId: undefined,
@@ -82,7 +83,7 @@ describe("TemplateRepository", () => {
     expect((await repository.list())[0]).toMatchObject({
       deckId: "legacy-deck",
       deckName: "Unknown deck",
-      fields: [{ name: "word", required: true, multiline: false }],
+      fields: [{ id: "legacy-1", name: "word", type: "text", required: true, multiline: false }],
     });
   });
 
@@ -93,6 +94,7 @@ describe("TemplateRepository", () => {
       templates: [
         {
           ...created,
+          content: created.cardBody,
           fields: undefined,
           mochiTemplateId: undefined,
           variables: [{ name: "word", label: "Word", required: true }],
@@ -101,64 +103,112 @@ describe("TemplateRepository", () => {
     });
 
     await expect(repository.list()).resolves.toEqual([
-      expect.objectContaining({ fields: [{ name: "word", required: true, multiline: false }] }),
+      expect.objectContaining({
+        fields: [{ id: "legacy-1", name: "word", type: "text", required: true, multiline: false }],
+      }),
     ]);
   });
 
   it("migrates version 3 templates to use no Mochi template", async () => {
-    const created = await repository.create(draft({ mochiTemplateId: "mochi-template-1" }));
+    const created = await repository.create(draft());
     storage.value = JSON.stringify({
       version: 3,
       templates: [
         {
           ...created,
+          content: created.cardBody,
           mochiTemplateId: undefined,
-          fields: created.fields.map(({ name, required }) => ({ name, required })),
+          fields: created.fields.map((field) => ({
+            name: field.name,
+            required: field.type === "boolean" ? false : field.required,
+          })),
         },
       ],
     });
 
     await expect(repository.list()).resolves.toEqual([
       expect.objectContaining({
-        mochiTemplateId: null,
-        fields: [{ name: "word", required: true, multiline: false }],
+        output: { kind: "card-body" },
+        fields: [{ id: "legacy-1", name: "word", type: "text", required: true, multiline: false }],
       }),
     ]);
   });
 
   it("migrates version 4 fields to single-line inputs", async () => {
-    const created = await repository.create(draft({ fields: [{ name: "word", required: true, multiline: true }] }));
+    const created = await repository.create(
+      draft({ fields: [{ id: "word", name: "word", type: "text", required: true, multiline: true }] })
+    );
     storage.value = JSON.stringify({
       version: 4,
       templates: [
         {
           ...created,
-          fields: created.fields.map(({ name, required }) => ({ name, required })),
+          content: created.cardBody,
+          fields: created.fields.map((field) => ({
+            name: field.name,
+            required: field.type === "boolean" ? false : field.required,
+          })),
         },
       ],
     });
 
     await expect(repository.list()).resolves.toEqual([
-      expect.objectContaining({ fields: [{ name: "word", required: true, multiline: false }] }),
+      expect.objectContaining({
+        fields: [{ id: "legacy-1", name: "word", type: "text", required: true, multiline: false }],
+      }),
     ]);
   });
 
+  it("migrates version 5 selected templates to needs-configuration without losing Card Body", async () => {
+    const created = await repository.create(draft());
+    storage.value = JSON.stringify({
+      version: 5,
+      templates: [
+        {
+          ...created,
+          content: "# Saved card body",
+          fields: [{ name: "word", required: true, multiline: true }],
+          mochiTemplateId: "remote-template",
+        },
+      ],
+    });
+
+    await expect(repository.list()).resolves.toEqual([
+      expect.objectContaining({
+        cardBody: "# Saved card body",
+        fields: [{ id: "legacy-1", name: "word", type: "text", required: true, multiline: true }],
+        output: {
+          kind: "mochi-template",
+          target: { status: "needs-configuration", templateId: "remote-template" },
+        },
+      }),
+    ]);
+  });
+
+  it("keeps stable field IDs through duplication and supports zero inputs", async () => {
+    const created = await repository.create(draft({ fields: [], cardBody: "Static" }));
+    const duplicate = await repository.duplicate(created.id);
+
+    expect(created.fields).toEqual([]);
+    expect(duplicate.fields).toEqual([]);
+  });
+
   it("rejects an unsupported storage version without overwriting it", async () => {
-    storage.value = JSON.stringify({ version: 6, templates: [] });
+    storage.value = JSON.stringify({ version: 7, templates: [] });
 
     await expect(repository.create(draft())).rejects.toMatchObject({ kind: "corrupted-data" });
-    expect(JSON.parse(storage.value)).toEqual({ version: 6, templates: [] });
+    expect(JSON.parse(storage.value)).toEqual({ version: 7, templates: [] });
   });
 });
 
 function draft(overrides: Partial<CardTemplateDraft> = {}): CardTemplateDraft {
   return {
     name: "Words",
-    fields: [{ name: "word", required: true, multiline: false }],
-    content: "# <<word>>",
+    fields: [{ id: "word", name: "word", type: "text", required: true, multiline: false }],
+    cardBody: "# <<word>>",
+    output: { kind: "card-body" },
     deckId: "deck-1",
     deckName: "Vocabulary",
-    mochiTemplateId: null,
     tags: [" vocabulary ", "vocabulary"],
     reviewReverse: false,
     archived: false,

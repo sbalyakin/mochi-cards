@@ -1,6 +1,6 @@
 import { substituteFields, trimOuterEmptyLines } from "./domain/template-engine";
 import { parseTemplate } from "./domain/template-parser";
-import type { FieldValues } from "./domain/template";
+import { fieldValueAsString, type FieldValues } from "./domain/template";
 import { renderRaycastMarkdown } from "./raycast-markdown";
 import type { MochiCard, MochiTemplate } from "./services/mochi-client";
 
@@ -19,7 +19,12 @@ export function cardMarkdown(card: MochiCard, template?: MochiTemplate): string 
   if (card.fields.length === 0) {
     return "_No card content._";
   }
-  return card.fields.map((field) => `### ${field.id}\n\n${field.value || "_Empty_"}`).join("\n\n---\n\n");
+  return card.fields
+    .map((field) => {
+      const value = fieldValueAsString(field.value);
+      return `### ${field.id}\n\n${value.length === 0 ? "_Empty_" : value}`;
+    })
+    .join("\n\n---\n\n");
 }
 
 function renderTemplate(card: MochiCard, template: MochiTemplate): string | undefined {
@@ -46,7 +51,9 @@ function renderTemplate(card: MochiCard, template: MochiTemplate): string | unde
 
 function templateFieldValues(card: MochiCard, template: MochiTemplate): FieldValues {
   const cardFieldsById = new Map(card.fields.map((field) => [field.id, field.value]));
-  return Object.fromEntries(template.fields.map((field) => [field.name, cardFieldsById.get(field.id) ?? ""]));
+  return Object.fromEntries(
+    template.fields.map((field) => [field.name, fieldValueAsString(cardFieldsById.get(field.id))])
+  );
 }
 
 function latestAiCacheText(card: MochiCard, prompt: string): string | undefined {

@@ -1,6 +1,6 @@
 # Mochi Cards
 
-Raycast extension for Mochi flashcards on macOS. You write the template, pick which parts are AI-generated, fill in a few variables, preview the card, and send it to your deck.
+Raycast extension for Mochi flashcards on macOS. Build cards from a Markdown body or map typed inputs to fields in an existing Mochi template.
 
 The extension does not invent card structure for you. Your Markdown template is the layout. AI only runs inside tagged blocks you define.
 
@@ -21,10 +21,10 @@ Open Raycast, enable the development extension, and enter the Mochi API key in t
 
 ## How it works
 
-1. Create a template with variables, Markdown body, and a Mochi deck selected from your account.
+1. Create a local template with typed inputs, a Mochi deck, and either a Markdown Card Body or Mochi field mappings.
 2. Run **Create Card**, pick a template, and fill the form.
 3. The extension substitutes `<<variables>>`, calls AI for each `<ai>` block, and shows a preview.
-4. Regenerate one field, edit the Markdown by hand, or send the card to Mochi.
+4. Regenerate one AI field, edit the generated output, or send the card to Mochi.
 
 ```
 Template + variable values
@@ -38,13 +38,13 @@ Each `<ai>` block is a separate request. If one translation comes back wrong, yo
 
 ## Template syntax
 
-A template has a name, a list of variables, Markdown content, and a Mochi deck. Optional fields include a Mochi template, tags, `review-reverse?`, and `archived?`.
+A template has a name, typed input fields, a Mochi deck, and an output mode. **No Template** renders the saved Card Body. Selecting a Mochi template maps local inputs or custom generated values to its fields. Tags, reverse review, and archived status are optional.
 
 The template form loads decks from `GET https://app.mochi.cards/api/decks` and Mochi templates from `GET https://app.mochi.cards/api/templates/`. The internal IDs are used only when sending a card to Mochi. `No Template` is selected by default.
 
 ### Variables
 
-Variables are plain text. Declare them in the template settings, then reference them with placeholders:
+Inputs can be text, number, or boolean. Declare them in the template settings, then reference their names with placeholders in Card Body or custom mappings:
 
 ```markdown
 # <<word>>
@@ -58,7 +58,7 @@ Examples: `word`, `source_language`, `example_context`
 
 Invalid: `source language`, `1word`, `word-name`
 
-Empty values are allowed. They replace the placeholder with an empty string. Sections with empty variables are not removed automatically.
+Empty optional text and number values are allowed. Boolean placeholders render as `true` or `false`. Sections with empty inputs are not removed automatically.
 
 ### AI fields
 
@@ -89,17 +89,16 @@ AI fields are processed independently, in document order. Variables are substitu
 
 After generation you can:
 
-- **Add to Mochi** — send the finished Markdown to your deck
-- **Edit Markdown** — tweak the card by hand (this disables per-field regeneration until you restore the last generated version)
+- **Add to Mochi** — send the active Card Body or mapped Mochi field values to your deck
+- **Edit Markdown / Edit Field Values** — tweak generated output by hand (this disables regeneration until you restore the generated version)
 - **Regenerate All AI Fields** — rerun every `<ai>` block
 - **Regenerate AI Field** — rerun a single block
 - **Back to Input** — change variable values (this invalidates all AI results)
-- **Copy Markdown**
-- **Save as Markdown File**
+- **Copy Markdown** and **Save as Markdown File** — available for Card Body output
 
 ## Sending to Mochi
 
-Confirmed cards are posted to the Mochi API as regular Markdown in `content`. If selected, the Mochi template is sent in `template-id`; otherwise it is sent as `null`. Placeholders and `<ai>` tags never leave your machine.
+Confirmed cards use one of two request shapes. Card Body mode sends rendered Markdown in `content` and omits `template-id` and `fields`:
 
 ```http
 POST https://app.mochi.cards/api/cards/
@@ -111,6 +110,28 @@ POST https://app.mochi.cards/api/cards/
   "deck-id": "..."
 }
 ```
+
+Mochi template mode sends empty `content`, the selected `template-id`, and only mapped fields. Text and number values are JSON strings; boolean values remain JSON booleans. Unmapped fields are omitted.
+
+```json
+{
+  "content": "",
+  "deck-id": "...",
+  "template-id": "template-id",
+  "fields": {
+    "front-field-id": {
+      "id": "front-field-id",
+      "value": "Rendered field value"
+    },
+    "boolean-field-id": {
+      "id": "boolean-field-id",
+      "value": true
+    }
+  }
+}
+```
+
+Placeholders and `<ai>` tags are resolved locally and never appear in either payload.
 
 Store your Mochi API key in Raycast preferences. The extension uses HTTP Basic Auth with the API key as the username and an empty password.
 
@@ -133,7 +154,7 @@ The template language is intentionally small:
 - `<<variable>>` placeholders
 - `<ai>...</ai>` blocks
 
-Not supported: conditionals, loops, filters, default values, typed variables, nested `<ai>` tags, references between AI fields, Mochi dynamic fields, or embedded code.
+Not supported: conditionals, loops, filters, default values, nested `<ai>` tags, references between AI fields, embedded code, or mapping Mochi field types such as transcription and draw.
 
 ## Commands
 

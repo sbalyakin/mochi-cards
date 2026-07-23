@@ -4,8 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import {
   editMarkdown,
   generateSession,
+  generationFieldTitle,
   getAiFieldErrors,
   getGeneratedAiFields,
+  getMochiOutput,
   isSessionReady,
   regenerateAll,
   regenerateField,
@@ -16,10 +18,12 @@ import {
   type GenerationSession,
 } from "../domain/generation-session";
 import type { CardTemplate, FieldValues } from "../domain/template";
+import { detectTemplateDrift, refreshTemplateSnapshot } from "../domain/mochi-template";
 import { renderRaycastMarkdown } from "../raycast-markdown";
-import { MochiClient, MochiError } from "../services/mochi-client";
+import { MochiClient, MochiError, toMochiTemplateSnapshot } from "../services/mochi-client";
 import { RaycastAiClient } from "../services/raycast-ai-client";
 import { MarkdownEditor } from "./markdown-editor";
+import { MochiValuesEditor } from "./mochi-values-editor";
 import { SaveMarkdownForm } from "./save-markdown-form";
 
 type CardPreviewProps = {
@@ -45,7 +49,10 @@ export function CardPreview({ template, values, onCardAdded }: CardPreviewProps)
   const previewMarkdown = renderRaycastMarkdown(markdown);
   const creationMarkdown = creationLog.join("  \n");
   const fieldErrors = session ? getAiFieldErrors(session) : [];
-  const ready = session !== undefined && isSessionReady(session) && markdown.trim().length > 0;
+  const isCardBodySession = session
+    ? (session.mode === "generated" ? session.output.kind : session.output.kind) === "card-body"
+    : template.output.kind === "card-body";
+  const ready = session !== undefined && isSessionReady(session) && (!isCardBodySession || markdown.trim().length > 0);
 
   useEffect(() => {
     const logProgress = (progress: GenerationProgress): void => {
@@ -54,7 +61,31 @@ export function CardPreview({ template, values, onCardAdded }: CardPreviewProps)
 
     async function generateInitialSession(controller: AbortController): Promise<void> {
       try {
-        const generated = await generateSession(template, values, aiClient, controller.signal, logProgress);
+        let generationTemplate = template;
+        if (template.output.kind === "mochi-template") {
+          if (template.output.target.status === "needs-configuration") {
+            throw new Error("Mochi template mappings need configuration");
+          }
+          const { mochiApiKey } = getPreferenceValues<Preferences>();
+          const live = toMochiTemplateSnapshot(
+            await new MochiClient(mochiApiKey).getTemplate(template.output.target.template.id, controller.signal)
+          );
+          const drift = detectTemplateDrift(template.output.target.template, live, template.output.target.bindings);
+          if (drift.length > 0) {
+            throw new Error(`${drift[0].message}. Edit the local template mappings.`);
+          }
+          generationTemplate = {
+            ...template,
+            output: {
+              kind: "mochi-template",
+              target: {
+                ...template.output.target,
+                template: refreshTemplateSnapshot(template.output.target.template, live),
+              },
+            },
+          };
+        }
+        const generated = await generateSession(generationTemplate, values, aiClient, controller.signal, logProgress);
         if (controller.signal.aborted) {
           return;
         }
@@ -145,7 +176,19 @@ export function CardPreview({ template, values, onCardAdded }: CardPreviewProps)
     setIsWorking(true);
     try {
       const { mochiApiKey } = getPreferenceValues<Preferences>();
-      const card = await new MochiClient(mochiApiKey).createCard(markdown, template, controller.signal);
+      const mochiOutput = getMochiOutput(session);
+      const card = await new MochiClient(mochiApiKey).createCard(
+        {
+          deckId: template.deckId,
+          tags: template.tags,
+          reviewReverse: template.reviewReverse,
+          archived: template.archived,
+          output: mochiOutput
+            ? { kind: "mochi-template", templateId: mochiOutput.templateId, fields: mochiOutput.fields }
+            : { kind: "card-body", content: markdown },
+        },
+        controller.signal
+      );
       await showToast({
         style: Toast.Style.Success,
         title: "Card added to Mochi",
@@ -204,7 +247,7 @@ export function CardPreview({ template, values, onCardAdded }: CardPreviewProps)
           {fieldErrors.map((error) => (
             <Detail.Metadata.Label
               key={error.id}
-              title={fieldTitle(error.id)}
+              title={generationFieldTitle(session, error.id)}
               text={error.message}
               icon={Icon.Warning}
             />
@@ -216,7 +259,7 @@ export function CardPreview({ template, values, onCardAdded }: CardPreviewProps)
           {session ? (
             <>
               {ready ? <Action title="Add to Mochi" icon={Icon.Upload} onAction={addToMochi} /> : null}
-              {generatedSession ? (
+              {generatedSession?.output.kind === "card-body" ? (
                 <Action.Push
                   title="Edit Markdown"
                   icon={Icon.Pencil}
@@ -226,6 +269,12 @@ export function CardPreview({ template, values, onCardAdded }: CardPreviewProps)
                       onSave={(editedMarkdown) => setSession(editMarkdown(generatedSession, editedMarkdown))}
                     />
                   }
+                />
+              ) : generatedSession?.output.kind === "mochi-template" ? (
+                <Action.Push
+                  title="Edit Field Values"
+                  icon={Icon.Pencil}
+                  target={<MochiValuesEditor session={generatedSession} onSave={setSession} />}
                 />
               ) : (
                 <Action
@@ -254,11 +303,12 @@ export function CardPreview({ template, values, onCardAdded }: CardPreviewProps)
                       {getGeneratedAiFields(generatedSession).map((field) => (
                         <Action
                           key={field.id}
-                          title={fieldTitle(field.id)}
+                          title={generationFieldTitle(generatedSession, field.id)}
                           icon={field.result.status === "error" ? Icon.Warning : Icon.Stars}
                           onAction={() =>
-                            runRegeneration(`${fieldTitle(field.id)} regenerated`, (generated, signal) =>
-                              regenerateField(generated, field.id, aiClient, signal)
+                            runRegeneration(
+                              `${generationFieldTitle(generatedSession, field.id)} regenerated`,
+                              (generated, signal) => regenerateField(generated, field.id, aiClient, signal)
                             )
                           }
                         />
@@ -268,12 +318,14 @@ export function CardPreview({ template, values, onCardAdded }: CardPreviewProps)
                 </>
               ) : null}
               <Action title="Back to Input" icon={Icon.ArrowLeft} onAction={pop} />
-              <Action.CopyToClipboard title="Copy Markdown" content={markdown} />
-              <Action.Push
-                title="Save as Markdown File"
-                icon={Icon.SaveDocument}
-                target={<SaveMarkdownForm markdown={markdown} suggestedName={template.name} />}
-              />
+              {isCardBodySession ? <Action.CopyToClipboard title="Copy Markdown" content={markdown} /> : null}
+              {isCardBodySession ? (
+                <Action.Push
+                  title="Save as Markdown File"
+                  icon={Icon.SaveDocument}
+                  target={<SaveMarkdownForm markdown={markdown} suggestedName={template.name} />}
+                />
+              ) : null}
               {isWorking ? (
                 <Action
                   title="Cancel Current Operation"
@@ -289,11 +341,6 @@ export function CardPreview({ template, values, onCardAdded }: CardPreviewProps)
       }
     />
   );
-}
-
-function fieldTitle(id: string): string {
-  const number = id.replace("ai-field-", "");
-  return `AI Field ${number}`;
 }
 
 function generationProgressMessage(progress: GenerationProgress): string {

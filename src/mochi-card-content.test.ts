@@ -20,9 +20,25 @@ describe("cardMarkdown", () => {
     expect(
       cardMarkdown(
         card({ fields: [{ id: "word", value: "grace" }] }),
-        template({ content: "<< word >>", fields: [{ id: "word", name: "word" }] })
+        template({ content: "<< word >>", fields: [{ id: "word", name: "word", type: "text", multiline: false }] })
       )
     ).toBe("grace");
+  });
+
+  it("renders boolean fields as true or false", () => {
+    expect(
+      cardMarkdown(
+        card({ fields: [{ id: "active", value: false }] }),
+        template({
+          content: "Enabled: << active >>",
+          fields: [{ id: "active", name: "active", type: "boolean", multiline: false }],
+        })
+      )
+    ).toBe("Enabled: false");
+  });
+
+  it("renders false instead of Empty in the field fallback", () => {
+    expect(cardMarkdown(card({ fields: [{ id: "active", value: false }] }))).toBe("### active\n\nfalse");
   });
 
   it("asks to update the card when an AI result is missing", () => {
@@ -69,7 +85,7 @@ function template(overrides: Partial<MochiTemplate> = {}): MochiTemplate {
     id: "template-1",
     name: "English AI Flashcard",
     content: "",
-    fields: [{ id: "name", name: "Name" }],
+    fields: [{ id: "name", name: "Name", type: "text", multiline: false }],
     ...overrides,
   };
 }

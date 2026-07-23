@@ -1,4 +1,11 @@
-import type { CardTemplate, CardTemplateDraft } from "./template";
+import { classifyMochiField, isDirectBindingCompatible } from "./mochi-template";
+import type {
+  CardTemplate,
+  CardTemplateDraft,
+  MochiFieldBinding,
+  MochiTemplateSnapshotField,
+  TemplateInputField,
+} from "./template";
 import { parseTemplate, TemplateParseError, type TemplateParseErrorCode } from "./template-parser";
 
 export type TemplateValidationErrorCode =
@@ -6,9 +13,19 @@ export type TemplateValidationErrorCode =
   | "content-required"
   | "deck-id-required"
   | "deck-name-required"
+  | "field-id-required"
+  | "field-id-duplicate"
   | "field-name-required"
   | "field-name-invalid"
   | "field-name-duplicate"
+  | "target-needs-configuration"
+  | "target-unavailable"
+  | "binding-target-duplicate"
+  | "binding-target-stale"
+  | "binding-source-stale"
+  | "binding-type-incompatible"
+  | "binding-target-unmappable"
+  | "custom-mapping-required"
   | "unknown-placeholder"
   | TemplateParseErrorCode;
 
@@ -37,9 +54,6 @@ export function validateTemplate(template: CardTemplate | CardTemplateDraft): re
   if (template.name.trim().length === 0) {
     errors.push({ code: "name-required", path: "name", message: "Template name is required" });
   }
-  if (template.content.trim().length === 0) {
-    errors.push({ code: "content-required", path: "content", message: "Markdown content is required" });
-  }
   if (template.deckId.trim().length === 0) {
     errors.push({ code: "deck-id-required", path: "deckId", message: "Select a Mochi deck" });
   }
@@ -47,10 +61,49 @@ export function validateTemplate(template: CardTemplate | CardTemplateDraft): re
     errors.push({ code: "deck-name-required", path: "deckId", message: "Select a Mochi deck" });
   }
 
-  const declaredNames = new Set<string>();
-  template.fields.forEach((field, index) => {
+  validateInputFields(template.fields, errors);
+
+  if (template.output.kind === "card-body") {
+    validateContent(template.cardBody, template.fields, "cardBody", true, errors);
+  } else if (template.output.target.status === "needs-configuration") {
+    errors.push({
+      code: "target-needs-configuration",
+      path: "output",
+      message: "Mochi template mappings need configuration",
+    });
+  } else {
+    validateBindings(template.fields, template.output.target.template.fields, template.output.target.bindings, errors);
+  }
+
+  return errors;
+}
+
+export function assertValidTemplate(template: CardTemplate | CardTemplateDraft): void {
+  const errors = validateTemplate(template);
+  if (errors.length > 0) {
+    throw new InvalidTemplateError(errors);
+  }
+}
+
+function validateInputFields(fields: readonly TemplateInputField[], errors: TemplateValidationError[]): void {
+  const ids = new Set<string>();
+  const names = new Set<string>();
+  fields.forEach((field, index) => {
+    const id = field.id.trim();
     const name = field.name.trim();
-    if (name.length === 0) {
+    if (!id) {
+      errors.push({ code: "field-id-required", path: `fields.${index}.id`, message: `Field ${index + 1} needs an ID` });
+    } else if (ids.has(id)) {
+      errors.push({
+        code: "field-id-duplicate",
+        path: `fields.${index}.id`,
+        message: `Field ID “${id}” is duplicated`,
+      });
+    } else {
+      ids.add(id);
+    }
+
+    if (!name) {
       errors.push({
         code: "field-name-required",
         path: `fields.${index}.name`,
@@ -62,44 +115,106 @@ export function validateTemplate(template: CardTemplate | CardTemplateDraft): re
         path: `fields.${index}.name`,
         message: `Field “${name}” must start with a letter and contain only letters, digits, and _`,
       });
-    } else if (declaredNames.has(name)) {
+    } else if (names.has(name)) {
       errors.push({
         code: "field-name-duplicate",
         path: `fields.${index}.name`,
         message: `Field “${name}” is declared more than once`,
       });
     } else {
-      declaredNames.add(name);
+      names.add(name);
     }
   });
+}
 
-  for (const placeholder of template.content.matchAll(PLACEHOLDER_PATTERN)) {
+function validateBindings(
+  sourceFields: readonly TemplateInputField[],
+  targetFields: readonly MochiTemplateSnapshotField[],
+  bindings: readonly MochiFieldBinding[],
+  errors: TemplateValidationError[]
+): void {
+  const sourceById = new Map(sourceFields.map((field) => [field.id, field]));
+  const targetById = new Map(targetFields.map((field) => [field.id, field]));
+  const targetIds = new Set<string>();
+
+  bindings.forEach((binding, index) => {
+    const path = `output.bindings.${index}`;
+    const target = targetById.get(binding.targetFieldId);
+    if (targetIds.has(binding.targetFieldId)) {
+      errors.push({ code: "binding-target-duplicate", path, message: "A Mochi field can only have one mapping" });
+    }
+    targetIds.add(binding.targetFieldId);
+    if (!target) {
+      errors.push({
+        code: "binding-target-stale",
+        path,
+        message: `Mapped Mochi field ${binding.targetFieldId} no longer exists`,
+      });
+      return;
+    }
+    if (classifyMochiField(target) !== "mappable") {
+      errors.push({
+        code: "binding-target-unmappable",
+        path,
+        message: `Mochi field “${target.name}” cannot be mapped`,
+      });
+      return;
+    }
+
+    if (binding.kind === "input") {
+      const source = sourceById.get(binding.sourceFieldId);
+      if (!source) {
+        errors.push({
+          code: "binding-source-stale",
+          path,
+          message: `Input field ${binding.sourceFieldId} no longer exists`,
+        });
+      } else if (!isDirectBindingCompatible(source, target)) {
+        errors.push({
+          code: "binding-type-incompatible",
+          path,
+          message: `Input “${source.name}” has an incompatible type`,
+        });
+      }
+      return;
+    }
+
+    if (!binding.template.trim()) {
+      errors.push({
+        code: "custom-mapping-required",
+        path: `${path}.template`,
+        message: `Custom mapping for “${target.name}” is empty`,
+      });
+      return;
+    }
+    validateContent(binding.template, sourceFields, `${path}.template`, false, errors);
+  });
+}
+
+function validateContent(
+  content: string,
+  fields: readonly TemplateInputField[],
+  path: string,
+  required: boolean,
+  errors: TemplateValidationError[]
+): void {
+  if (required && !content.trim()) {
+    errors.push({ code: "content-required", path, message: "Markdown content is required" });
+  }
+  const declaredNames = new Set(fields.map((field) => field.name.trim()));
+  for (const placeholder of content.matchAll(PLACEHOLDER_PATTERN)) {
     const name = placeholder[1].trim();
     if (!declaredNames.has(name)) {
-      errors.push({
-        code: "unknown-placeholder",
-        path: "content",
-        message: `Unknown field: <<${name}>>`,
-      });
+      errors.push({ code: "unknown-placeholder", path, message: `Unknown field: <<${name}>>` });
     }
   }
-
   try {
-    parseTemplate(template.content);
+    parseTemplate(content);
   } catch (error: unknown) {
     if (error instanceof TemplateParseError) {
-      errors.push({ code: error.code, path: "content", message: error.message });
+      errors.push({ code: error.code, path, message: error.message });
     } else {
       throw error;
     }
-  }
-
-  return errors;
-}
-
-export function assertValidTemplate(template: CardTemplate | CardTemplateDraft): void {
-  const errors = validateTemplate(template);
-  if (errors.length > 0) {
-    throw new InvalidTemplateError(errors);
   }
 }

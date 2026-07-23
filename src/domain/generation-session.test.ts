@@ -3,7 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   editMarkdown,
   generateSession,
+  generationFieldTitle,
   getAiFieldErrors,
+  getGeneratedAiFields,
+  getMochiFieldValues,
   isSessionReady,
   regenerateAll,
   regenerateField,
@@ -171,6 +174,47 @@ describe("generation session", () => {
     expect(renderMarkdown(edited)).toBe("Manual text");
     expect(renderMarkdown(restoreGenerated(edited))).toBe("Plain text");
   });
+
+  it("generates direct and custom Mochi fields with namespaced AI IDs and typed values", async () => {
+    const generated = await generateSession(
+      mochiTemplate(),
+      { word: "λόγος", count: "7", enabled: true },
+      { ask: async (prompt) => (prompt.includes("number") ? "42" : "unused") }
+    );
+
+    expect(getMochiFieldValues(generated)).toEqual({ front: "λόγος", amount: "42", active: true });
+    expect(getGeneratedAiFields(generated).map((field) => field.id)).toEqual(["mochi:amount:ai-field-1"]);
+    expect(generationFieldTitle(generated, "mochi:amount:ai-field-1")).toBe("Amount · AI Field 1");
+    expect(generationFieldTitle(generated, "mochi:active")).toBe("Active");
+    expect(isSessionReady(generated)).toBe(true);
+  });
+
+  it("blocks invalid custom number and boolean conversions", async () => {
+    const source = mochiTemplate();
+    const generated = await generateSession(
+      {
+        ...source,
+        output: {
+          kind: "mochi-template",
+          target: {
+            ...source.output.target,
+            bindings: [
+              { kind: "custom", targetFieldId: "amount", template: "not-a-number" },
+              { kind: "custom", targetFieldId: "active", template: "yes" },
+            ],
+          },
+        },
+      },
+      {},
+      { ask: async () => "unused" }
+    );
+
+    expect(getAiFieldErrors(generated).map((error) => error.message)).toEqual([
+      "Amount must produce a non-empty finite number",
+      "Active must produce true or false",
+    ]);
+    expect(isSessionReady(generated)).toBe(false);
+  });
 });
 
 function template(content: string): CardTemplate {
@@ -178,13 +222,59 @@ function template(content: string): CardTemplate {
     id: "template-1",
     name: "Test",
     fields: [
-      { name: "word", required: false, multiline: false },
-      { name: "context", required: false, multiline: true },
+      { id: "word", name: "word", type: "text", required: false, multiline: false },
+      { id: "context", name: "context", type: "text", required: false, multiline: true },
     ],
-    content,
+    cardBody: content,
+    output: { kind: "card-body" },
     deckId: "deck-1",
     deckName: "Vocabulary",
-    mochiTemplateId: null,
+    tags: [],
+    reviewReverse: false,
+    archived: false,
+    updatedAt: "2026-07-22T00:00:00.000Z",
+  };
+}
+
+function mochiTemplate(): CardTemplate & {
+  readonly output: Extract<CardTemplate["output"], { readonly kind: "mochi-template" }> & {
+    readonly target: Extract<
+      Extract<CardTemplate["output"], { readonly kind: "mochi-template" }>["target"],
+      { readonly status: "configured" }
+    >;
+  };
+} {
+  return {
+    id: "mapped-template",
+    name: "Mapped",
+    fields: [
+      { id: "word", name: "word", type: "text", required: true, multiline: false },
+      { id: "count", name: "count", type: "number", required: false },
+      { id: "enabled", name: "enabled", type: "boolean" },
+    ],
+    cardBody: "Saved draft",
+    output: {
+      kind: "mochi-template",
+      target: {
+        status: "configured",
+        template: {
+          id: "mochi-template",
+          name: "Mochi",
+          fields: [
+            { id: "front", name: "Front", type: "text", multiline: false },
+            { id: "amount", name: "Amount", type: "number", multiline: false },
+            { id: "active", name: "Active", type: "boolean", multiline: false },
+          ],
+        },
+        bindings: [
+          { kind: "input", targetFieldId: "front", sourceFieldId: "word" },
+          { kind: "custom", targetFieldId: "amount", template: "<ai>number <<count>></ai>" },
+          { kind: "input", targetFieldId: "active", sourceFieldId: "enabled" },
+        ],
+      },
+    },
+    deckId: "deck-1",
+    deckName: "Deck",
     tags: [],
     reviewReverse: false,
     archived: false,

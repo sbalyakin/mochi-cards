@@ -1,7 +1,7 @@
 import { Cache } from "@raycast/api";
 
 const STORAGE_KEY = "catalog";
-const STORAGE_VERSION = 2;
+const STORAGE_VERSION = 3;
 
 export type MochiCatalogItem = {
   readonly id: string;
@@ -16,6 +16,9 @@ export type MochiCatalogTemplate = MochiCatalogItem & {
 export type MochiCatalogTemplateField = {
   readonly id: string;
   readonly name: string;
+  readonly type: string;
+  readonly pos?: string;
+  readonly multiline: boolean;
 };
 
 export type MochiCatalog = {
@@ -109,7 +112,7 @@ function isMochiCatalogEnvelope(value: unknown): value is MochiCatalogEnvelope {
 }
 
 function isPreviousMochiCatalogEnvelope(value: unknown): boolean {
-  return isRecord(value) && value.version === 1;
+  return isRecord(value) && (value.version === 1 || value.version === 2);
 }
 
 function isMochiCatalogItem(value: unknown): value is MochiCatalogItem {
@@ -128,7 +131,14 @@ function isMochiCatalogTemplate(value: unknown): value is MochiCatalogTemplate {
 }
 
 function isMochiCatalogTemplateField(value: unknown): value is MochiCatalogTemplateField {
-  return isRecord(value) && typeof value.id === "string" && typeof value.name === "string";
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    typeof value.type === "string" &&
+    (value.pos === undefined || typeof value.pos === "string") &&
+    typeof value.multiline === "boolean"
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

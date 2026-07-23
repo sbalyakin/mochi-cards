@@ -35,7 +35,16 @@ export default function GenerateCard({ deckId }: GenerateCardProps = {}) {
         />
       ) : (
         matchingTemplates.map((template) => {
-          const aiFieldCount = parseTemplate(template.content).filter((segment) => segment.kind === "ai").length;
+          const canGenerate = template.output.kind === "card-body" || template.output.target.status === "configured";
+          const aiFieldCount =
+            template.output.kind === "card-body"
+              ? parseTemplate(template.cardBody).filter((segment) => segment.kind === "ai").length
+              : template.output.target.status === "configured"
+                ? template.output.target.bindings
+                    .filter((binding) => binding.kind === "custom")
+                    .flatMap((binding) => parseTemplate(binding.template))
+                    .filter((segment) => segment.kind === "ai").length
+                : 0;
           return (
             <List.Item
               key={template.id}
@@ -43,16 +52,19 @@ export default function GenerateCard({ deckId }: GenerateCardProps = {}) {
               title={template.name}
               subtitle={template.deckName}
               accessories={[
+                ...(!canGenerate ? [{ tag: { value: "Needs Mapping", color: "orange" } }] : []),
                 { text: `${template.fields.length} input${template.fields.length === 1 ? "" : "s"}` },
                 { text: `${aiFieldCount} AI field${aiFieldCount === 1 ? "" : "s"}` },
               ]}
               actions={
                 <ActionPanel>
-                  <Action.Push
-                    title="Use Template"
-                    icon={Icon.ArrowRight}
-                    target={<GenerationInputForm template={template} />}
-                  />
+                  {canGenerate ? (
+                    <Action.Push
+                      title="Use Template"
+                      icon={Icon.ArrowRight}
+                      target={<GenerationInputForm template={template} />}
+                    />
+                  ) : null}
                 </ActionPanel>
               }
             />
