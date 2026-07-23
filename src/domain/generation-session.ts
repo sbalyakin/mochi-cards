@@ -38,17 +38,31 @@ export type AiFieldError = {
   readonly message: string;
 };
 
+export type GenerationProgress =
+  | { readonly kind: "substituting-fields" }
+  | { readonly kind: "generating-ai-fields"; readonly total: number }
+  | { readonly kind: "ai-field-finished"; readonly number: number; readonly total: number; readonly succeeded: boolean }
+  | { readonly kind: "rendering-preview" };
+
 export async function generateSession(
   template: CardTemplate,
   values: FieldValues,
   aiClient: AiClient,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onProgress?: (progress: GenerationProgress) => void
 ): Promise<GeneratedSession> {
+  onProgress?.({ kind: "substituting-fields" });
   const prepared = prepareTemplate(template, values);
   const aiSegments = prepared.filter((segment): segment is PreparedAiSegment => segment.kind === "ai");
-  const results = await runAiRequests(aiSegments, aiClient, signal);
+  if (aiSegments.length > 0) {
+    onProgress?.({ kind: "generating-ai-fields", total: aiSegments.length });
+  }
+  const results = await runAiRequests(aiSegments, aiClient, signal, (number, succeeded) =>
+    onProgress?.({ kind: "ai-field-finished", number, total: aiSegments.length, succeeded })
+  );
 
   throwIfAborted(signal);
+  onProgress?.({ kind: "rendering-preview" });
 
   const resultsById = new Map(aiSegments.map((segment, index) => [segment.id, results[index]]));
   return {
@@ -196,7 +210,8 @@ function getAiSegments(session: GeneratedSession): readonly GeneratedAiSegment[]
 async function runAiRequests(
   segments: readonly PreparedAiSegment[],
   aiClient: AiClient,
-  signal: AbortSignal | undefined
+  signal: AbortSignal | undefined,
+  onFieldFinished?: (number: number, succeeded: boolean) => void
 ): Promise<readonly PromiseSettledResult<string>[]> {
   const results = new Array<PromiseSettledResult<string>>(segments.length);
   let nextIndex = 0;
@@ -212,6 +227,7 @@ async function runAiRequests(
       } catch (reason: unknown) {
         results[index] = { status: "rejected", reason };
       }
+      onFieldFinished?.(index + 1, results[index].status === "fulfilled");
     }
   }
 

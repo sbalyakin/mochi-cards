@@ -8,8 +8,12 @@ describe("cardMarkdown", () => {
     expect(cardMarkdown(card({ content: "# Saved Markdown" }), template())).toBe("# Saved Markdown");
   });
 
-  it("renders template hr tags as line breaks", () => {
-    expect(cardMarkdown(card(), template({ content: "Before<hr />After" }))).toBe("Before\nAfter");
+  it("renders horizontal rule tags in saved card content as Markdown horizontal rules", () => {
+    expect(cardMarkdown(card({ content: "Before<hr />After" }))).toBe("Before\n\n---\n\nAfter");
+  });
+
+  it("renders template hr tags as Markdown horizontal rules", () => {
+    expect(cardMarkdown(card(), template({ content: "Before<hr />After" }))).toBe("Before\n\n---\n\nAfter");
   });
 
   it("renders a field when its template name falls back to its ID", () => {

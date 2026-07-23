@@ -1,13 +1,14 @@
 import { substituteFields, trimOuterEmptyLines } from "./domain/template-engine";
 import { parseTemplate } from "./domain/template-parser";
 import type { FieldValues } from "./domain/template";
+import { renderRaycastMarkdown } from "./raycast-markdown";
 import type { MochiCard, MochiTemplate } from "./services/mochi-client";
 
 const MISSING_AI_CONTENT_MESSAGE = "_Update this card in Mochi to generate its content._";
 
 export function cardMarkdown(card: MochiCard, template?: MochiTemplate): string {
   if (card.content.trim().length > 0) {
-    return card.content;
+    return renderRaycastMarkdown(card.content);
   }
 
   const templateMarkdown = template ? renderTemplate(card, template) : undefined;
@@ -31,13 +32,13 @@ function renderTemplate(card: MochiCard, template: MochiTemplate): string | unde
     const rendered = parseTemplate(template.content)
       .map((segment) => {
         if (segment.kind === "text") {
-          return substituteFields(segment.content, values).replace(/<hr\s*\/?>/gi, "\n");
+          return substituteFields(segment.content, values);
         }
         const prompt = trimOuterEmptyLines(substituteFields(segment.prompt, values));
         return latestAiCacheText(card, prompt) ?? MISSING_AI_CONTENT_MESSAGE;
       })
       .join("");
-    return trimOuterEmptyLines(rendered) || undefined;
+    return trimOuterEmptyLines(renderRaycastMarkdown(rendered)) || undefined;
   } catch {
     return undefined;
   }

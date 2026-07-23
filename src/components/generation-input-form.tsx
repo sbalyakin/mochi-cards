@@ -1,16 +1,12 @@
 import { Action, ActionPanel, Form, Icon, showToast, Toast, useNavigation } from "@raycast/api";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
 import type { CardTemplate, FieldValues } from "../domain/template";
-import { generateSession, getAiFieldErrors } from "../domain/generation-session";
-import { RaycastAiClient } from "../services/raycast-ai-client";
 import { CardPreview } from "./card-preview";
 
 type GenerationInputFormProps = {
   readonly template: CardTemplate;
 };
-
-const aiClient = new RaycastAiClient();
 
 export function GenerationInputForm({ template }: GenerationInputFormProps) {
   const { push } = useNavigation();
@@ -18,21 +14,12 @@ export function GenerationInputForm({ template }: GenerationInputFormProps) {
     Object.fromEntries(template.fields.map((field) => [field.name, ""]))
   );
   const [errors, setErrors] = useState<Readonly<Record<string, string>>>({});
-  const [isGenerating, setIsGenerating] = useState(false);
-  const activeController = useRef<AbortController | undefined>(undefined);
-
-  useEffect(
-    () => () => {
-      activeController.current?.abort(new Error("Input closed"));
-    },
-    []
-  );
+  function resetInput(): void {
+    setValues(Object.fromEntries(template.fields.map((field) => [field.name, ""])));
+    setErrors({});
+  }
 
   async function generate(): Promise<void> {
-    if (activeController.current) {
-      return;
-    }
-
     const nextErrors = Object.fromEntries(
       template.fields
         .filter((field) => field.required && (values[field.name] ?? "").trim().length === 0)
@@ -44,46 +31,15 @@ export function GenerationInputForm({ template }: GenerationInputFormProps) {
       return;
     }
 
-    const controller = new AbortController();
-    activeController.current = controller;
-    setIsGenerating(true);
-    try {
-      const session = await generateSession(template, values, aiClient, controller.signal);
-      const fieldErrors = getAiFieldErrors(session);
-      push(<CardPreview template={template} initialSession={session} />);
-      if (fieldErrors.length > 0) {
-        await showToast({
-          style: Toast.Style.Failure,
-          title: `${fieldErrors.length} AI field${fieldErrors.length === 1 ? "" : "s"} failed`,
-          message: "Successful fields were kept. Retry the failed fields from the preview.",
-        });
-      }
-    } catch (error: unknown) {
-      if (!controller.signal.aborted) {
-        await showToast({ style: Toast.Style.Failure, title: "Could not generate card", message: errorMessage(error) });
-      }
-    } finally {
-      if (activeController.current === controller) {
-        activeController.current = undefined;
-        setIsGenerating(false);
-      }
-    }
+    push(<CardPreview template={template} values={values} onCardAdded={resetInput} />);
   }
 
   return (
     <Form
-      isLoading={isGenerating}
       navigationTitle={template.name}
       actions={
         <ActionPanel>
           <Action.SubmitForm title="Create Card" icon={Icon.Stars} onSubmit={generate} />
-          {isGenerating ? (
-            <Action
-              title="Cancel Generation"
-              icon={Icon.Stop}
-              onAction={() => activeController.current?.abort(new Error("Generation cancelled"))}
-            />
-          ) : null}
         </ActionPanel>
       }
     >
@@ -116,8 +72,4 @@ export function GenerationInputForm({ template }: GenerationInputFormProps) {
       ))}
     </Form>
   );
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Unexpected error";
 }

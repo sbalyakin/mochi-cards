@@ -9,6 +9,7 @@ import {
   regenerateField,
   renderMarkdown,
   restoreGenerated,
+  type GenerationProgress,
 } from "./generation-session";
 import type { CardTemplate } from "./template";
 import { trimOuterEmptyLines, type AiClient } from "./template-engine";
@@ -48,6 +49,25 @@ describe("generation session", () => {
 
     expect(prompts).toEqual(["Translate λόγος"]);
     expect(renderMarkdown(session)).toBe("# λόγος\nword");
+  });
+
+  it("reports creation progress", async () => {
+    const progress: GenerationProgress[] = [];
+
+    await generateSession(
+      template("Before<ai>prompt</ai>After"),
+      {},
+      { ask: async () => "answer" },
+      undefined,
+      (entry) => progress.push(entry)
+    );
+
+    expect(progress).toEqual([
+      { kind: "substituting-fields" },
+      { kind: "generating-ai-fields", total: 1 },
+      { kind: "ai-field-finished", number: 1, total: 1, succeeded: true },
+      { kind: "rendering-preview" },
+    ]);
   });
 
   it("keeps successful fields when another AI request fails", async () => {
@@ -132,6 +152,12 @@ describe("generation session", () => {
     };
     const session = await generateSession(template("<ai>prompt</ai>"), { word: "changed" }, client);
     expect(renderMarkdown(session)).toBe("<<word>>\n<ai>literal</ai>");
+  });
+
+  it("preserves horizontal rule tags for Mochi", async () => {
+    const session = await generateSession(template("Before<hr>After"), {}, { ask: async () => "unused" });
+
+    expect(renderMarkdown(session)).toBe("Before<hr>After");
   });
 
   it("trims only outer empty lines from AI responses", () => {
