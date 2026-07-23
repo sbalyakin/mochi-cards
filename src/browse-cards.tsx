@@ -300,6 +300,7 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
   const [sort, setSort] = useState<CardSort>("position");
   const [isSortReversed, setIsSortReversed] = useState(false);
   const [filter, setFilter] = useState<CardFilter>("all");
+  const [isShowingMetadata, setIsShowingMetadata] = useState(true);
   const [isDeletingCard, setIsDeletingCard] = useState(false);
   const isDeletingCardRef = useRef(false);
   const {
@@ -469,7 +470,7 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
               icon={card.archived ? Icon.CircleDisabled : Icon.Document}
               title={cardTitle(card)}
               keywords={[card.content, ...card.tags, ...card.fields.map((field) => field.value)]}
-              detail={<CardDetail card={card} deck={deck} template={template} />}
+              detail={<CardDetail card={card} deck={deck} template={template} showMetadata={isShowingMetadata} />}
               actions={
                 <ActionPanel>
                   <Action.Push
@@ -486,6 +487,12 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
                     shortcut={Keyboard.Shortcut.Common.Copy}
                   />
                   <Action
+                    title={isShowingMetadata ? "Hide Details" : "Show Details"}
+                    icon={isShowingMetadata ? Icon.EyeDisabled : Icon.Eye}
+                    shortcut={{ modifiers: ["cmd"], key: "d" }}
+                    onAction={() => setIsShowingMetadata((isVisible) => !isVisible)}
+                  />
+                  <Action
                     title={isSortReversed ? "Use Default Sort Order" : "Reverse Sort Order"}
                     icon={isSortReversed ? Icon.ArrowUp : Icon.ArrowDown}
                     onAction={() => setIsSortReversed((reversed) => !reversed)}
@@ -500,7 +507,7 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
                     <Action
                       title="Delete Card"
                       icon={Icon.Trash}
-                      shortcut={{ modifiers: ["cmd"], key: "d" }}
+                      shortcut={{ modifiers: ["cmd"], key: "backspace" }}
                       style={Action.Style.Destructive}
                       onAction={() => {
                         void deleteCard(card);
@@ -598,7 +605,7 @@ function CardView({
             <Action
               title="Delete Card"
               icon={Icon.Trash}
-              shortcut={{ modifiers: ["cmd"], key: "d" }}
+              shortcut={{ modifiers: ["cmd"], key: "backspace" }}
               style={Action.Style.Destructive}
               onAction={deleteCard}
             />
@@ -624,10 +631,12 @@ function CardDetail({
   card,
   deck,
   template,
+  showMetadata,
 }: {
   readonly card: MochiCard;
   readonly deck: MochiDeck;
   readonly template?: MochiCatalogTemplate;
+  readonly showMetadata: boolean;
 }) {
   const latestReviewDate = lastReviewDate(card);
   const hasSameCreatedAndUpdatedTime = datesMatchWithinMinute(card.createdAt, card.updatedAt);
@@ -637,43 +646,45 @@ function CardDetail({
     <List.Item.Detail
       markdown={cardMarkdown(card, template)}
       metadata={
-        <List.Item.Detail.Metadata>
-          {card.fields.map((field) => (
-            <List.Item.Detail.Metadata.Label
-              key={field.id}
-              title={templateFieldNamesById.get(field.id) || field.id}
-              text={field.value}
-            />
-          ))}
-          {card.tags.length > 0 ? (
-            <List.Item.Detail.Metadata.TagList title="Tags">
-              {card.tags.map((tag) => (
-                <List.Item.Detail.Metadata.TagList.Item key={tag} text={tag} />
-              ))}
-            </List.Item.Detail.Metadata.TagList>
-          ) : null}
-          {card.fields.length > 0 || card.tags.length > 0 ? <List.Item.Detail.Metadata.Separator /> : null}
-          <List.Item.Detail.Metadata.Label title="Review Count" text={String(card.reviews.length)} />
-          {latestReviewDate ? (
-            <List.Item.Detail.Metadata.Label title="Last Reviewed" text={formatDateOnly(latestReviewDate)} />
-          ) : null}
-          {card.createdAt ? (
-            <List.Item.Detail.Metadata.Label title="Created" text={formatDate(card.createdAt)} />
-          ) : null}
-          {card.updatedAt && !hasSameCreatedAndUpdatedTime ? (
-            <List.Item.Detail.Metadata.Label title="Updated" text={formatDate(card.updatedAt)} />
-          ) : null}
-          {card.archived ? <List.Item.Detail.Metadata.Label title="Archived" text="Yes" /> : null}
-          <List.Item.Detail.Metadata.Separator />
-          {card.templateId ? (
-            <List.Item.Detail.Metadata.Label
-              title="Mochi Template"
-              text={template?.name ?? "Unavailable Template"}
-              icon={Icon.Box}
-            />
-          ) : null}
-          <List.Item.Detail.Metadata.Label title="Deck" text={deck.name} icon={Icon.Book} />
-        </List.Item.Detail.Metadata>
+        showMetadata ? (
+          <List.Item.Detail.Metadata>
+            {card.fields.map((field) => (
+              <List.Item.Detail.Metadata.Label
+                key={field.id}
+                title={templateFieldNamesById.get(field.id) || field.id}
+                text={field.value}
+              />
+            ))}
+            {card.tags.length > 0 ? (
+              <List.Item.Detail.Metadata.TagList title="Tags">
+                {card.tags.map((tag) => (
+                  <List.Item.Detail.Metadata.TagList.Item key={tag} text={tag} />
+                ))}
+              </List.Item.Detail.Metadata.TagList>
+            ) : null}
+            {card.fields.length > 0 || card.tags.length > 0 ? <List.Item.Detail.Metadata.Separator /> : null}
+            <List.Item.Detail.Metadata.Label title="Review Count" text={String(card.reviews.length)} />
+            {latestReviewDate ? (
+              <List.Item.Detail.Metadata.Label title="Last Reviewed" text={formatDateOnly(latestReviewDate)} />
+            ) : null}
+            {card.createdAt ? (
+              <List.Item.Detail.Metadata.Label title="Created" text={formatDate(card.createdAt)} />
+            ) : null}
+            {card.updatedAt && !hasSameCreatedAndUpdatedTime ? (
+              <List.Item.Detail.Metadata.Label title="Updated" text={formatDate(card.updatedAt)} />
+            ) : null}
+            {card.archived ? <List.Item.Detail.Metadata.Label title="Archived" text="Yes" /> : null}
+            <List.Item.Detail.Metadata.Separator />
+            {card.templateId ? (
+              <List.Item.Detail.Metadata.Label
+                title="Mochi Template"
+                text={template?.name ?? "Unavailable Template"}
+                icon={Icon.Box}
+              />
+            ) : null}
+            <List.Item.Detail.Metadata.Label title="Deck" text={deck.name} icon={Icon.Book} />
+          </List.Item.Detail.Metadata>
+        ) : undefined
       }
     />
   );
