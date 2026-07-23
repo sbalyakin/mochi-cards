@@ -15,6 +15,7 @@ import { usePromise } from "@raycast/utils";
 import { useEffect, useRef, useState } from "react";
 
 import { CARD_SORT_OPTIONS, cardTitle, isCardSort, isSortDescending, sortCards, type CardSort } from "./card-sorting";
+import { cardMarkdown } from "./mochi-card-content";
 import {
   isMochiDeckNotFoundError,
   MochiClient,
@@ -23,7 +24,11 @@ import {
   type MochiDeck,
 } from "./services/mochi-client";
 import { DeckSelectionRepository } from "./storage/deck-selection-repository";
-import { MochiCatalogRepository, type MochiCatalog, type MochiCatalogItem } from "./storage/mochi-catalog-repository";
+import {
+  MochiCatalogRepository,
+  type MochiCatalog,
+  type MochiCatalogTemplate,
+} from "./storage/mochi-catalog-repository";
 
 const deckSelectionRepository = new DeckSelectionRepository();
 const mochiCatalogRepository = new MochiCatalogRepository();
@@ -282,7 +287,7 @@ function ConfigureDecks({ decks, initialDeckIds, onSelectionChange }: ConfigureD
 type CardListProps = {
   readonly client: MochiClient;
   readonly deck: MochiDeck;
-  readonly templates: readonly MochiCatalogItem[];
+  readonly templates: readonly MochiCatalogTemplate[];
   readonly onDeckNotFound: () => void;
 };
 
@@ -306,7 +311,7 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
     },
   });
   const isDeckNotFound = isMochiDeckNotFoundError(error);
-  const templateNamesById = new Map(templates.map((template) => [template.id, template.name]));
+  const templatesById = new Map(templates.map((template) => [template.id, template]));
   const sortedCards = sortCards(cards, sort, isSortReversed);
   const visibleCards = sortedCards.filter((card) => matchesFilter(card, filter));
   const isCurrentSortDescending = isSortDescending(sort, isSortReversed);
@@ -395,33 +400,30 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
           }
         />
       ) : (
-        visibleCards.map((card) => (
-          <List.Item
-            key={card.id}
-            icon={card.archived ? Icon.CircleDisabled : Icon.Document}
-            title={cardTitle(card)}
-            keywords={[card.content, ...card.tags, ...card.fields.map((field) => field.value)]}
-            detail={
-              <CardDetail
-                card={card}
-                deck={deck}
-                templateName={card.templateId ? templateNamesById.get(card.templateId) : undefined}
-              />
-            }
-            actions={
-              <ActionPanel>
-                <Action.CopyToClipboard title="Copy Card Markdown" content={cardMarkdown(card)} />
-                <Action
-                  title={isSortReversed ? "Use Default Sort Order" : "Reverse Sort Order"}
-                  icon={isSortReversed ? Icon.ArrowUp : Icon.ArrowDown}
-                  onAction={() => setIsSortReversed((reversed) => !reversed)}
-                  shortcut={Keyboard.Shortcut.Common.Open}
-                />
-                <Action title="Reload Cards" icon={Icon.ArrowClockwise} onAction={revalidate} />
-              </ActionPanel>
-            }
-          />
-        ))
+        visibleCards.map((card) => {
+          const template = card.templateId ? templatesById.get(card.templateId) : undefined;
+          return (
+            <List.Item
+              key={card.id}
+              icon={card.archived ? Icon.CircleDisabled : Icon.Document}
+              title={cardTitle(card)}
+              keywords={[card.content, ...card.tags, ...card.fields.map((field) => field.value)]}
+              detail={<CardDetail card={card} deck={deck} template={template} />}
+              actions={
+                <ActionPanel>
+                  <Action.CopyToClipboard title="Copy Card Markdown" content={cardMarkdown(card, template)} />
+                  <Action
+                    title={isSortReversed ? "Use Default Sort Order" : "Reverse Sort Order"}
+                    icon={isSortReversed ? Icon.ArrowUp : Icon.ArrowDown}
+                    onAction={() => setIsSortReversed((reversed) => !reversed)}
+                    shortcut={Keyboard.Shortcut.Common.Open}
+                  />
+                  <Action title="Reload Cards" icon={Icon.ArrowClockwise} onAction={revalidate} />
+                </ActionPanel>
+              }
+            />
+          );
+        })
       )}
     </List>
   );
@@ -441,22 +443,27 @@ function matchesFilter(card: MochiCard, filter: CardFilter): boolean {
 function CardDetail({
   card,
   deck,
-  templateName,
+  template,
 }: {
   readonly card: MochiCard;
   readonly deck: MochiDeck;
-  readonly templateName?: string;
+  readonly template?: MochiCatalogTemplate;
 }) {
   const latestReviewDate = lastReviewDate(card);
   const hasSameCreatedAndUpdatedTime = datesMatchWithinMinute(card.createdAt, card.updatedAt);
+  const templateFieldNamesById = new Map(template?.fields.map((field) => [field.id, field.name]));
 
   return (
     <List.Item.Detail
-      markdown={cardMarkdown(card)}
+      markdown={cardMarkdown(card, template)}
       metadata={
         <List.Item.Detail.Metadata>
           {card.fields.map((field) => (
-            <List.Item.Detail.Metadata.Label key={field.id} title={field.id} text={field.value} />
+            <List.Item.Detail.Metadata.Label
+              key={field.id}
+              title={templateFieldNamesById.get(field.id) || field.id}
+              text={field.value}
+            />
           ))}
           {card.tags.length > 0 ? (
             <List.Item.Detail.Metadata.TagList title="Tags">
@@ -481,7 +488,7 @@ function CardDetail({
           {card.templateId ? (
             <List.Item.Detail.Metadata.Label
               title="Mochi Template"
-              text={templateName ?? "Unavailable Template"}
+              text={template?.name ?? "Unavailable Template"}
               icon={Icon.Box}
             />
           ) : null}
@@ -490,16 +497,6 @@ function CardDetail({
       }
     />
   );
-}
-
-function cardMarkdown(card: MochiCard): string {
-  if (card.content.trim().length > 0) {
-    return card.content;
-  }
-  if (card.fields.length === 0) {
-    return "_No card content._";
-  }
-  return card.fields.map((field) => `### ${field.id}\n\n${field.value || "_Empty_"}`).join("\n\n---\n\n");
 }
 
 function formatDate(value: string): string {

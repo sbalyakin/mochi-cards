@@ -123,6 +123,11 @@ describe("MochiClient", () => {
                 "created-at": { date: "2026-07-21T10:00:00.000Z" },
                 pos: "A",
                 reviews: [{ date: { date: "2026-07-22T00:00:00.000Z" } }],
+                "component-cache": {
+                  ai: {
+                    "Explain hello.": { text: "Hello explanation", date: "2026-07-23" },
+                  },
+                },
               },
             ],
           })
@@ -158,6 +163,7 @@ describe("MochiClient", () => {
         updatedAt: undefined,
         position: "A",
         reviews: [{ date: "2026-07-22T00:00:00.000Z" }],
+        aiCacheEntries: [{ prompt: "Explain hello.", text: "Hello explanation", date: "2026-07-23" }],
         archived: undefined,
         templateId: undefined,
       },
@@ -172,6 +178,7 @@ describe("MochiClient", () => {
         updatedAt: undefined,
         position: undefined,
         reviews: [],
+        aiCacheEntries: [],
         archived: true,
         templateId: "template-1",
       },
@@ -192,14 +199,31 @@ describe("MochiClient", () => {
     const fetch = vi
       .fn<FetchLike>()
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ bookmark: "next-page", docs: [{ id: "template-2", name: "Words" }] }))
+        new Response(
+          JSON.stringify({
+            bookmark: "next-page",
+            docs: [
+              {
+                id: "template-2",
+                name: "Words",
+                content: "# << Word >>",
+                fields: { word: { id: "word" } },
+              },
+            ],
+          })
+        )
       )
       .mockResolvedValueOnce(new Response(JSON.stringify({ docs: [{ id: "template-1", name: "Greek" }] })));
     const client = new MochiClient("key", fetch);
 
     await expect(client.listTemplates()).resolves.toEqual([
-      { id: "template-1", name: "Greek" },
-      { id: "template-2", name: "Words" },
+      { id: "template-1", name: "Greek", content: undefined, fields: [] },
+      {
+        id: "template-2",
+        name: "Words",
+        content: "# << Word >>",
+        fields: [{ id: "word", name: "word" }],
+      },
     ]);
     expect(fetch).toHaveBeenNthCalledWith(
       1,

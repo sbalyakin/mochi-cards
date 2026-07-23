@@ -75,6 +75,7 @@ function card({ id, name, ...overrides }: Partial<MochiCard> & Pick<MochiCard, "
     updatedAt: undefined,
     position: undefined,
     reviews: [],
+    aiCacheEntries: [],
     archived: undefined,
     templateId: undefined,
     ...overrides,

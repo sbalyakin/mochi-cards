@@ -1,16 +1,26 @@
 import { Cache } from "@raycast/api";
 
 const STORAGE_KEY = "catalog";
-const STORAGE_VERSION = 1;
+const STORAGE_VERSION = 2;
 
 export type MochiCatalogItem = {
   readonly id: string;
   readonly name: string;
 };
 
+export type MochiCatalogTemplate = MochiCatalogItem & {
+  readonly content?: string;
+  readonly fields: readonly MochiCatalogTemplateField[];
+};
+
+export type MochiCatalogTemplateField = {
+  readonly id: string;
+  readonly name: string;
+};
+
 export type MochiCatalog = {
   readonly decks: readonly MochiCatalogItem[];
-  readonly templates: readonly MochiCatalogItem[];
+  readonly templates: readonly MochiCatalogTemplate[];
 };
 
 type MochiCatalogEnvelope = MochiCatalog & {
@@ -45,6 +55,9 @@ export class MochiCatalogRepository {
 
     try {
       const parsed: unknown = JSON.parse(storedValue);
+      if (isPreviousMochiCatalogEnvelope(parsed)) {
+        return undefined;
+      }
       if (!isMochiCatalogEnvelope(parsed)) {
         throw new Error("Stored Mochi catalog does not match a supported version");
       }
@@ -91,11 +104,30 @@ function isMochiCatalogEnvelope(value: unknown): value is MochiCatalogEnvelope {
     Array.isArray(value.decks) &&
     value.decks.every(isMochiCatalogItem) &&
     Array.isArray(value.templates) &&
-    value.templates.every(isMochiCatalogItem)
+    value.templates.every(isMochiCatalogTemplate)
   );
 }
 
+function isPreviousMochiCatalogEnvelope(value: unknown): boolean {
+  return isRecord(value) && value.version === 1;
+}
+
 function isMochiCatalogItem(value: unknown): value is MochiCatalogItem {
+  return isRecord(value) && typeof value.id === "string" && typeof value.name === "string";
+}
+
+function isMochiCatalogTemplate(value: unknown): value is MochiCatalogTemplate {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    (value.content === undefined || typeof value.content === "string") &&
+    Array.isArray(value.fields) &&
+    value.fields.every(isMochiCatalogTemplateField)
+  );
+}
+
+function isMochiCatalogTemplateField(value: unknown): value is MochiCatalogTemplateField {
   return isRecord(value) && typeof value.id === "string" && typeof value.name === "string";
 }
 

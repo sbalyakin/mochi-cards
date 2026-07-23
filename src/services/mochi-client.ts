@@ -50,6 +50,12 @@ export type MochiCardReview = {
   readonly date: string;
 };
 
+export type MochiCardAiCacheEntry = {
+  readonly prompt: string;
+  readonly text: string;
+  readonly date: string;
+};
+
 export type MochiCard = {
   readonly id: string;
   readonly deckId: string;
@@ -61,13 +67,21 @@ export type MochiCard = {
   readonly updatedAt?: string;
   readonly position?: string;
   readonly reviews: readonly MochiCardReview[];
+  readonly aiCacheEntries: readonly MochiCardAiCacheEntry[];
   readonly archived?: boolean;
   readonly templateId?: string | null;
+};
+
+export type MochiTemplateField = {
+  readonly id: string;
+  readonly name: string;
 };
 
 export type MochiTemplate = {
   readonly id: string;
   readonly name: string;
+  readonly content?: string;
+  readonly fields: readonly MochiTemplateField[];
 };
 
 type MochiCardPage = {
@@ -304,7 +318,13 @@ function parseTemplatePage(responseText: string): MochiTemplatePage {
     ) {
       throw new Error("Mochi returned an invalid template list");
     }
-    return { templates: value.docs.filter(isMochiTemplate), bookmark: value.bookmark };
+    return {
+      templates: value.docs.flatMap((template) => {
+        const parsed = parseMochiTemplate(template);
+        return parsed ? [parsed] : [];
+      }),
+      bookmark: value.bookmark,
+    };
   } catch (error: unknown) {
     if (error instanceof MochiError) {
       throw error;
@@ -413,6 +433,7 @@ function parseMochiCard(value: unknown): MochiCard | undefined {
     updatedAt: parseMochiDate(value["updated-at"]),
     position: typeof value.pos === "string" ? value.pos : undefined,
     reviews: parseCardReviews(value.reviews),
+    aiCacheEntries: parseMochiCardAiCache(value["component-cache"]),
     archived,
     templateId,
   };
@@ -445,6 +466,19 @@ function parseCardReviews(value: unknown): readonly MochiCardReview[] {
   });
 }
 
+function parseMochiCardAiCache(value: unknown): readonly MochiCardAiCacheEntry[] {
+  if (!isRecord(value) || !isRecord(value.ai)) {
+    return [];
+  }
+
+  return Object.entries(value.ai).flatMap(([prompt, entry]) => {
+    if (!isRecord(entry) || typeof entry.text !== "string" || typeof entry.date !== "string") {
+      return [];
+    }
+    return Number.isNaN(Date.parse(entry.date)) ? [] : [{ prompt, text: entry.text, date: entry.date }];
+  });
+}
+
 function parseMochiDate(value: unknown): string | undefined {
   if (!isRecord(value) || typeof value.date !== "string" || Number.isNaN(Date.parse(value.date))) {
     return undefined;
@@ -452,6 +486,28 @@ function parseMochiDate(value: unknown): string | undefined {
   return value.date;
 }
 
-function isMochiTemplate(value: unknown): value is MochiTemplate {
-  return isRecord(value) && typeof value.id === "string" && typeof value.name === "string";
+function parseMochiTemplate(value: unknown): MochiTemplate | undefined {
+  if (!isRecord(value) || typeof value.id !== "string" || typeof value.name !== "string") {
+    return undefined;
+  }
+
+  return {
+    id: value.id,
+    name: value.name,
+    content: typeof value.content === "string" ? value.content : undefined,
+    fields: parseMochiTemplateFields(value.fields),
+  };
+}
+
+function parseMochiTemplateFields(value: unknown): readonly MochiTemplateField[] {
+  if (!isRecord(value)) {
+    return [];
+  }
+
+  return Object.values(value).flatMap((field) => {
+    if (!isRecord(field) || typeof field.id !== "string") {
+      return [];
+    }
+    return [{ id: field.id, name: typeof field.name === "string" ? field.name : field.id }];
+  });
 }

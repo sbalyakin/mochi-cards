@@ -42,12 +42,12 @@ describe("MochiCatalogRepository", () => {
   it("stores decks and templates", () => {
     repository.replace({
       decks: [{ id: "deck-1", name: "Words" }],
-      templates: [{ id: "template-1", name: "Vocabulary" }],
+      templates: [{ id: "template-1", name: "Vocabulary", fields: [] }],
     });
 
     expect(repository.get()).toEqual({
       decks: [{ id: "deck-1", name: "Words" }],
-      templates: [{ id: "template-1", name: "Vocabulary" }],
+      templates: [{ id: "template-1", name: "Vocabulary", fields: [] }],
     });
   });
 
@@ -64,10 +64,16 @@ describe("MochiCatalogRepository", () => {
   });
 
   it("keeps corrupted storage unchanged", () => {
-    storage.value = JSON.stringify({ version: 1, decks: "invalid", templates: [] });
+    storage.value = JSON.stringify({ version: 2, decks: "invalid", templates: [] });
     const original = storage.value;
 
     expect(() => repository.get()).toThrow(MochiCatalogRepositoryError);
     expect(storage.value).toBe(original);
+  });
+
+  it("invalidates the previous catalog version", () => {
+    storage.value = JSON.stringify({ version: 1, decks: [], templates: [] });
+
+    expect(repository.get()).toBeUndefined();
   });
 });
