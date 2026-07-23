@@ -28,6 +28,12 @@
       "title": "Manage Templates",
       "description": "Create and manage reusable Mochi card templates.",
       "mode": "view"
+    },
+    {
+      "name": "browse-cards",
+      "title": "Browse Cards",
+      "description": "Browse cards in selected Mochi decks.",
+      "mode": "view"
     }
   ],
   "scripts": {

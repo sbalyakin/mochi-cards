@@ -139,6 +139,10 @@ Not supported: conditionals, loops, filters, default values, typed variables, ne
 
 - **Create Card** — pick a template and create a card
 - **Manage Templates** — create, edit, duplicate, and delete templates
+- **Browse Cards** — choose visible decks and browse their cards with a detail preview
+
+Browse Cards caches the Mochi deck and template catalog locally. Use **Reload Decks** to refresh it explicitly;
+card content is fetched when a deck is opened.
 
 ## Development
 

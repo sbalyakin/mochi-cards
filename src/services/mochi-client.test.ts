@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { CardTemplate } from "../domain/template";
-import { MochiClient, type FetchLike } from "./mochi-client";
+import { isMochiDeckNotFoundError, MochiClient, MochiError, type FetchLike } from "./mochi-client";
 
 describe("MochiClient", () => {
   it("posts the expected payload with HTTP Basic authentication", async () => {
@@ -55,6 +55,29 @@ describe("MochiClient", () => {
     });
   });
 
+  it("recognizes missing deck errors", () => {
+    expect(isMochiDeckNotFoundError(new MochiError("http", "Not found", 404))).toBe(true);
+    expect(isMochiDeckNotFoundError(new MochiError("validation", "deck-id is invalid", 422))).toBe(true);
+    expect(isMochiDeckNotFoundError(new MochiError("network", "offline"))).toBe(false);
+  });
+
+  it("recognizes a missing deck response while listing cards", async () => {
+    const client = new MochiClient(
+      "key",
+      async () => new Response(JSON.stringify({ errors: { "deck-id": "deck was not found" } }), { status: 422 })
+    );
+    let caughtError: unknown;
+
+    try {
+      await client.listCards("deleted-deck");
+    } catch (error: unknown) {
+      caughtError = error;
+    }
+
+    expect(caughtError).toMatchObject({ message: "deck-id: deck was not found" });
+    expect(isMochiDeckNotFoundError(caughtError)).toBe(true);
+  });
+
   it("loads every page of decks and sorts them", async () => {
     const fetch = vi
       .fn<FetchLike>()
@@ -78,6 +101,83 @@ describe("MochiClient", () => {
     expect(fetch).toHaveBeenNthCalledWith(
       2,
       "https://app.mochi.cards/api/decks?bookmark=next-page",
+      expect.objectContaining({ method: "GET" })
+    );
+  });
+
+  it("loads every page of cards for a deck", async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            bookmark: "next-page",
+            docs: [
+              {
+                id: "card-1",
+                "deck-id": "deck-1",
+                content: "# Hello",
+                name: "Hello",
+                tags: ["greeting"],
+                fields: { front: { id: "front", value: "Hello" } },
+                "created-at": { date: "2026-07-21T10:00:00.000Z" },
+              },
+            ],
+          })
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            docs: [
+              {
+                id: "card-2",
+                "deck-id": "deck-1",
+                content: "# World",
+                name: null,
+                "archived?": true,
+                "template-id": "template-1",
+              },
+            ],
+          })
+        )
+      );
+    const client = new MochiClient("key", fetch);
+
+    await expect(client.listCards("[[deck-1]]")).resolves.toEqual([
+      {
+        id: "card-1",
+        deckId: "deck-1",
+        content: "# Hello",
+        name: "Hello",
+        tags: ["greeting"],
+        fields: [{ id: "front", value: "Hello" }],
+        createdAt: "2026-07-21T10:00:00.000Z",
+        updatedAt: undefined,
+        archived: undefined,
+        templateId: undefined,
+      },
+      {
+        id: "card-2",
+        deckId: "deck-1",
+        content: "# World",
+        name: null,
+        tags: [],
+        fields: [],
+        createdAt: undefined,
+        updatedAt: undefined,
+        archived: true,
+        templateId: "template-1",
+      },
+    ]);
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      "https://app.mochi.cards/api/cards/?deck-id=deck-1&limit=100",
+      expect.objectContaining({ method: "GET" })
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      "https://app.mochi.cards/api/cards/?deck-id=deck-1&limit=100&bookmark=next-page",
       expect.objectContaining({ method: "GET" })
     );
   });
@@ -113,6 +213,15 @@ describe("MochiClient", () => {
     await expect(client.listDecks()).rejects.toMatchObject({
       kind: "http",
       message: "Mochi returned an invalid deck list",
+    });
+  });
+
+  it("rejects invalid card responses", async () => {
+    const client = new MochiClient("key", async () => new Response(JSON.stringify({ docs: "invalid" })));
+
+    await expect(client.listCards("deck-1")).rejects.toMatchObject({
+      kind: "http",
+      message: "Mochi returned an invalid card list",
     });
   });
 
