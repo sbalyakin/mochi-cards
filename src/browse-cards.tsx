@@ -455,30 +455,35 @@ function CardDetail({
       markdown={cardMarkdown(card)}
       metadata={
         <List.Item.Detail.Metadata>
-          {card.createdAt ? (
-            <List.Item.Detail.Metadata.Label title="Created" text={formatDate(card.createdAt)} />
-          ) : null}
-          {card.updatedAt && !hasSameCreatedAndUpdatedTime ? (
-            <List.Item.Detail.Metadata.Label title="Updated" text={formatDate(card.updatedAt)} />
-          ) : null}
-          {latestReviewDate ? (
-            <List.Item.Detail.Metadata.Label title="Last Reviewed" text={formatDateOnly(latestReviewDate)} />
-          ) : null}
-          <List.Item.Detail.Metadata.Label title="Review Count" text={String(card.reviews.length)} />
-          {card.templateId ? (
-            <List.Item.Detail.Metadata.Label
-              title="Template"
-              text={templateName ?? "Unavailable Template"}
-              icon={Icon.Box}
-            />
-          ) : null}
-          {card.archived ? <List.Item.Detail.Metadata.Label title="Archived" text="Yes" /> : null}
+          {card.fields.map((field) => (
+            <List.Item.Detail.Metadata.Label key={field.id} title={field.id} text={field.value} />
+          ))}
           {card.tags.length > 0 ? (
             <List.Item.Detail.Metadata.TagList title="Tags">
               {card.tags.map((tag) => (
                 <List.Item.Detail.Metadata.TagList.Item key={tag} text={tag} />
               ))}
             </List.Item.Detail.Metadata.TagList>
+          ) : null}
+          {card.fields.length > 0 || card.tags.length > 0 ? <List.Item.Detail.Metadata.Separator /> : null}
+          <List.Item.Detail.Metadata.Label title="Review Count" text={String(card.reviews.length)} />
+          {latestReviewDate ? (
+            <List.Item.Detail.Metadata.Label title="Last Reviewed" text={formatDateOnly(latestReviewDate)} />
+          ) : null}
+          {card.createdAt ? (
+            <List.Item.Detail.Metadata.Label title="Created" text={formatDate(card.createdAt)} />
+          ) : null}
+          {card.updatedAt && !hasSameCreatedAndUpdatedTime ? (
+            <List.Item.Detail.Metadata.Label title="Updated" text={formatDate(card.updatedAt)} />
+          ) : null}
+          {card.archived ? <List.Item.Detail.Metadata.Label title="Archived" text="Yes" /> : null}
+          <List.Item.Detail.Metadata.Separator />
+          {card.templateId ? (
+            <List.Item.Detail.Metadata.Label
+              title="Mochi Template"
+              text={templateName ?? "Unavailable Template"}
+              icon={Icon.Box}
+            />
           ) : null}
           <List.Item.Detail.Metadata.Label title="Deck" text={deck.name} icon={Icon.Book} />
         </List.Item.Detail.Metadata>
