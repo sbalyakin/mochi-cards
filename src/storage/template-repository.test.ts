@@ -79,7 +79,11 @@ describe("TemplateRepository", () => {
       ],
     });
 
-    expect((await repository.list())[0]).toMatchObject({ deckId: "legacy-deck", deckName: "Unknown deck" });
+    expect((await repository.list())[0]).toMatchObject({
+      deckId: "legacy-deck",
+      deckName: "Unknown deck",
+      fields: [{ name: "word", required: true, multiline: false }],
+    });
   });
 
   it("migrates version 2 variables to fields without labels", async () => {
@@ -97,7 +101,7 @@ describe("TemplateRepository", () => {
     });
 
     await expect(repository.list()).resolves.toEqual([
-      expect.objectContaining({ fields: [{ name: "word", required: true }] }),
+      expect.objectContaining({ fields: [{ name: "word", required: true, multiline: false }] }),
     ]);
   });
 
@@ -105,24 +109,52 @@ describe("TemplateRepository", () => {
     const created = await repository.create(draft({ mochiTemplateId: "mochi-template-1" }));
     storage.value = JSON.stringify({
       version: 3,
-      templates: [{ ...created, mochiTemplateId: undefined }],
+      templates: [
+        {
+          ...created,
+          mochiTemplateId: undefined,
+          fields: created.fields.map(({ name, required }) => ({ name, required })),
+        },
+      ],
     });
 
-    await expect(repository.list()).resolves.toEqual([expect.objectContaining({ mochiTemplateId: null })]);
+    await expect(repository.list()).resolves.toEqual([
+      expect.objectContaining({
+        mochiTemplateId: null,
+        fields: [{ name: "word", required: true, multiline: false }],
+      }),
+    ]);
+  });
+
+  it("migrates version 4 fields to single-line inputs", async () => {
+    const created = await repository.create(draft({ fields: [{ name: "word", required: true, multiline: true }] }));
+    storage.value = JSON.stringify({
+      version: 4,
+      templates: [
+        {
+          ...created,
+          fields: created.fields.map(({ name, required }) => ({ name, required })),
+        },
+      ],
+    });
+
+    await expect(repository.list()).resolves.toEqual([
+      expect.objectContaining({ fields: [{ name: "word", required: true, multiline: false }] }),
+    ]);
   });
 
   it("rejects an unsupported storage version without overwriting it", async () => {
-    storage.value = JSON.stringify({ version: 5, templates: [] });
+    storage.value = JSON.stringify({ version: 6, templates: [] });
 
     await expect(repository.create(draft())).rejects.toMatchObject({ kind: "corrupted-data" });
-    expect(JSON.parse(storage.value)).toEqual({ version: 5, templates: [] });
+    expect(JSON.parse(storage.value)).toEqual({ version: 6, templates: [] });
   });
 });
 
 function draft(overrides: Partial<CardTemplateDraft> = {}): CardTemplateDraft {
   return {
     name: "Words",
-    fields: [{ name: "word", required: true }],
+    fields: [{ name: "word", required: true, multiline: false }],
     content: "# <<word>>",
     deckId: "deck-1",
     deckName: "Vocabulary",

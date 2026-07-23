@@ -6,30 +6,41 @@ import { normalizeDeckId, type CardTemplate, type CardTemplateDraft, type Templa
 import { assertValidTemplate, validateTemplate } from "../domain/template-validation";
 
 const STORAGE_KEY = "mochi-card-templates";
-const STORAGE_VERSION = 4;
+const STORAGE_VERSION = 5;
 
 type TemplateEnvelope = {
   readonly version: typeof STORAGE_VERSION;
   readonly templates: readonly CardTemplate[];
 };
 
+type VersionFourTemplateEnvelope = {
+  readonly version: 4;
+  readonly templates: readonly VersionFourCardTemplate[];
+};
+
+type VersionFourCardTemplate = Omit<CardTemplate, "fields"> & {
+  readonly fields: readonly VersionFourTemplateField[];
+};
+
+type VersionFourTemplateField = Omit<TemplateField, "multiline">;
+
 type VersionThreeTemplateEnvelope = {
   readonly version: 3;
   readonly templates: readonly VersionThreeCardTemplate[];
 };
 
-type VersionThreeCardTemplate = Omit<CardTemplate, "mochiTemplateId">;
+type VersionThreeCardTemplate = Omit<VersionFourCardTemplate, "mochiTemplateId">;
 
 type VersionTwoTemplateEnvelope = {
   readonly version: 2;
   readonly templates: readonly VersionTwoCardTemplate[];
 };
 
-type VersionTwoCardTemplate = Omit<CardTemplate, "fields" | "mochiTemplateId"> & {
+type VersionTwoCardTemplate = Omit<VersionFourCardTemplate, "fields" | "mochiTemplateId"> & {
   readonly variables: readonly VersionTwoTemplateField[];
 };
 
-type VersionTwoTemplateField = TemplateField & {
+type VersionTwoTemplateField = VersionFourTemplateField & {
   readonly label: string;
 };
 
@@ -158,6 +169,12 @@ export class TemplateRepository {
           templates: parsed.templates.map(normalizeStoredTemplate),
         };
       }
+      if (isVersionFourTemplateEnvelope(parsed)) {
+        return {
+          version: STORAGE_VERSION,
+          templates: parsed.templates.map(migrateVersionFourTemplate),
+        };
+      }
       if (isVersionThreeTemplateEnvelope(parsed)) {
         return {
           version: STORAGE_VERSION,
@@ -207,6 +224,7 @@ function normalizeDraft(draft: CardTemplateDraft): CardTemplateDraft {
     fields: draft.fields.map((field) => ({
       name: field.name.trim(),
       required: field.required,
+      multiline: field.multiline,
     })),
     content: draft.content,
     deckId: normalizeDeckId(draft.deckId),
@@ -243,6 +261,13 @@ function isLegacyTemplateEnvelope(value: unknown): value is LegacyTemplateEnvelo
     return false;
   }
   return value.templates.every(isLegacyCardTemplate);
+}
+
+function isVersionFourTemplateEnvelope(value: unknown): value is VersionFourTemplateEnvelope {
+  if (!isRecord(value) || value.version !== 4 || !Array.isArray(value.templates)) {
+    return false;
+  }
+  return value.templates.every(isVersionFourCardTemplate);
 }
 
 function isCardTemplate(value: unknown): value is CardTemplate {
@@ -291,13 +316,21 @@ function normalizeStoredTemplate(template: CardTemplate): CardTemplate {
   };
 }
 
-function migrateVersionThreeTemplate(template: VersionThreeCardTemplate): CardTemplate {
+function migrateVersionFourTemplate(template: VersionFourCardTemplate): CardTemplate {
   return {
     ...template,
+    fields: template.fields.map((field) => ({ ...field, multiline: false })),
     deckId: normalizeDeckId(template.deckId),
     deckName: template.deckName.trim(),
-    mochiTemplateId: null,
+    mochiTemplateId: template.mochiTemplateId?.trim() || null,
   };
+}
+
+function migrateVersionThreeTemplate(template: VersionThreeCardTemplate): CardTemplate {
+  return migrateVersionFourTemplate({
+    ...template,
+    mochiTemplateId: null,
+  });
 }
 
 function migrateVersionTwoTemplate(
@@ -307,7 +340,7 @@ function migrateVersionTwoTemplate(
   return {
     id: template.id,
     name: template.name,
-    fields: template.variables.map(({ name, required }) => ({ name, required })),
+    fields: template.variables.map(({ name, required }) => ({ name, required, multiline: false })),
     content: template.content,
     deckId: normalizeDeckId(template.deckId),
     deckName,
@@ -334,7 +367,17 @@ function isVersionThreeTemplateEnvelope(value: unknown): value is VersionThreeTe
 }
 
 function isVersionThreeCardTemplate(value: unknown): value is VersionThreeCardTemplate {
-  return isRecord(value) && isCardTemplate({ ...value, mochiTemplateId: null });
+  return isRecord(value) && isVersionFourCardTemplate({ ...value, mochiTemplateId: null });
+}
+
+function isVersionFourCardTemplate(value: unknown): value is VersionFourCardTemplate {
+  if (!isRecord(value) || !Array.isArray(value.fields) || !value.fields.every(isVersionFourTemplateField)) {
+    return false;
+  }
+  return isCardTemplate({
+    ...value,
+    fields: value.fields.map((field) => ({ ...field, multiline: false })),
+  });
 }
 
 function isLegacyCardTemplate(value: unknown): value is LegacyCardTemplate {
@@ -350,7 +393,7 @@ function isVersionTwoCardTemplate(value: unknown): value is VersionTwoCardTempla
   }
   return isCardTemplate({
     ...value,
-    fields: value.variables.map(({ name, required }) => ({ name, required })),
+    fields: value.variables.map(({ name, required }) => ({ name, required, multiline: false })),
     mochiTemplateId: null,
   });
 }
@@ -365,6 +408,15 @@ function isVersionTwoTemplateField(value: unknown): value is VersionTwoTemplateF
 }
 
 function isTemplateField(value: unknown): value is TemplateField {
+  return (
+    isRecord(value) &&
+    typeof value.name === "string" &&
+    typeof value.required === "boolean" &&
+    typeof value.multiline === "boolean"
+  );
+}
+
+function isVersionFourTemplateField(value: unknown): value is VersionFourTemplateField {
   return isRecord(value) && typeof value.name === "string" && typeof value.required === "boolean";
 }
 

@@ -178,8 +178,8 @@ function template(content: string): CardTemplate {
     id: "template-1",
     name: "Test",
     fields: [
-      { name: "word", required: false },
-      { name: "context", required: false },
+      { name: "word", required: false, multiline: false },
+      { name: "context", required: false, multiline: true },
     ],
     content,
     deckId: "deck-1",

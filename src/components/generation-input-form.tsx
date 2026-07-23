@@ -50,15 +50,14 @@ export function GenerationInputForm({ template }: GenerationInputFormProps) {
       {template.fields.length === 0 ? (
         <Form.Description title="Input" text="This template has no fields. Generate it as-is." />
       ) : null}
-      {template.fields.map((field) => (
-        <Form.TextArea
-          key={field.name}
-          id={field.name}
-          title={field.name}
-          placeholder={field.required ? "Required" : "Optional"}
-          value={values[field.name] ?? ""}
-          error={errors[field.name]}
-          onChange={(value) => {
+      {template.fields.map((field) => {
+        const props = {
+          id: field.name,
+          title: field.name,
+          placeholder: field.required ? "Required" : "Optional",
+          value: values[field.name] ?? "",
+          error: errors[field.name],
+          onChange: (value: string) => {
             setValues((current) => ({ ...current, [field.name]: value }));
             if (errors[field.name]) {
               setErrors((current) => {
@@ -67,9 +66,14 @@ export function GenerationInputForm({ template }: GenerationInputFormProps) {
                 return remaining;
               });
             }
-          }}
-        />
-      ))}
+          },
+        };
+        return field.multiline ? (
+          <Form.TextArea key={field.name} {...props} />
+        ) : (
+          <Form.TextField key={field.name} {...props} />
+        );
+      })}
     </Form>
   );
 }

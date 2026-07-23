@@ -1,6 +1,7 @@
 export type TemplateField = {
   readonly name: string;
   readonly required: boolean;
+  readonly multiline: boolean;
 };
 
 export type CardTemplate = {

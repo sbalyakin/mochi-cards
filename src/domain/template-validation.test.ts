@@ -17,9 +17,9 @@ describe("validateTemplate", () => {
   it("reports duplicate and malformed field names", () => {
     const draft = createDraft({
       fields: [
-        { name: "word", required: true },
-        { name: "word", required: false },
-        { name: "1bad", required: false },
+        { name: "word", required: true, multiline: false },
+        { name: "word", required: false, multiline: false },
+        { name: "1bad", required: false, multiline: false },
       ],
     });
     expect(validateTemplate(draft).map((error) => error.code)).toEqual(
@@ -44,7 +44,7 @@ describe("validateTemplate", () => {
 function createDraft(overrides: Partial<CardTemplateDraft> = {}): CardTemplateDraft {
   return {
     name: "Words",
-    fields: [{ name: "word", required: true }],
+    fields: [{ name: "word", required: true, multiline: false }],
     content: "# <<word>>",
     deckId: "deck-1",
     deckName: "Vocabulary",

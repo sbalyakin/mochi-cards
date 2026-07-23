@@ -306,16 +306,22 @@ function FieldFields({ index, field, errors, onChange }: FieldFieldsProps) {
         value={field.required}
         onChange={(required) => onChange({ required })}
       />
+      <Form.Checkbox
+        id={`field-${field.key}-multiline`}
+        label="Multiline"
+        value={field.multiline}
+        onChange={(multiline) => onChange({ multiline })}
+      />
     </>
   );
 }
 
 function createEmptyField(): EditableField {
-  return { key: randomUUID(), name: "", required: false };
+  return { key: randomUUID(), name: "", required: false, multiline: false };
 }
 
 function createInitialField(): EditableField {
-  return { key: randomUUID(), name: "Name", required: true };
+  return { key: randomUUID(), name: "Name", required: true, multiline: false };
 }
 
 function toEditableField(field: TemplateField): EditableField {
@@ -342,7 +348,7 @@ function createDraft(values: {
     content: values.content,
     reviewReverse: values.reviewReverse,
     archived: values.archived,
-    fields: values.fields.map(({ name, required }) => ({ name, required })),
+    fields: values.fields.map(({ name, required, multiline }) => ({ name, required, multiline })),
   };
 }
 
