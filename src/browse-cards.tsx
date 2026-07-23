@@ -3,6 +3,8 @@ import { execFileSync } from "node:child_process";
 import {
   Action,
   ActionPanel,
+  Alert,
+  confirmAlert,
   getPreferenceValues,
   Icon,
   Keyboard,
@@ -297,6 +299,8 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
   const [sort, setSort] = useState<CardSort>("position");
   const [isSortReversed, setIsSortReversed] = useState(false);
   const [filter, setFilter] = useState<CardFilter>("all");
+  const [isDeletingCard, setIsDeletingCard] = useState(false);
+  const isDeletingCardRef = useRef(false);
   const {
     data: cards = [],
     error,
@@ -331,9 +335,45 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
     }
   }
 
+  async function deleteCard(card: MochiCard): Promise<void> {
+    if (isDeletingCardRef.current) {
+      return;
+    }
+
+    const confirmed = await confirmAlert({
+      title: "Delete Card?",
+      message: `Permanently delete “${cardTitle(card)}” from Mochi? This cannot be undone.`,
+      primaryAction: { title: "Delete Card", style: Alert.ActionStyle.Destructive },
+    });
+    if (!confirmed) {
+      return;
+    }
+
+    if (isDeletingCardRef.current) {
+      return;
+    }
+
+    isDeletingCardRef.current = true;
+    setIsDeletingCard(true);
+    try {
+      await client.deleteCard(card.id);
+      await revalidate();
+      await showToast({ style: Toast.Style.Success, title: "Card Deleted" });
+    } catch (error: unknown) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Could Not Delete Card",
+        message: mochiErrorMessage(error),
+      });
+    } finally {
+      isDeletingCardRef.current = false;
+      setIsDeletingCard(false);
+    }
+  }
+
   return (
     <List
-      isLoading={isLoading}
+      isLoading={isLoading || isDeletingCard}
       isShowingDetail
       navigationTitle={
         filter === "all" ? deck.name : `${deck.name} · ${filter === "reviewed" ? "Reviewed" : "Not Reviewed"}`
@@ -419,6 +459,15 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
                     shortcut={Keyboard.Shortcut.Common.Open}
                   />
                   <Action title="Reload Cards" icon={Icon.ArrowClockwise} onAction={revalidate} />
+                  <ActionPanel.Section title="Danger Zone">
+                    <Action
+                      title="Delete Card"
+                      icon={Icon.Trash}
+                      shortcut={{ modifiers: ["cmd"], key: "d" }}
+                      style={Action.Style.Destructive}
+                      onAction={() => deleteCard(card)}
+                    />
+                  </ActionPanel.Section>
                 </ActionPanel>
               }
             />

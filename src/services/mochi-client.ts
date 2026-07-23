@@ -135,6 +135,16 @@ export class MochiClient {
     return parseCreatedCard(responseText);
   }
 
+  async deleteCard(cardId: string, signal?: AbortSignal): Promise<void> {
+    await this.request(
+      `${MOCHI_CARDS_URL}${encodeURIComponent(cardId)}`,
+      {
+        method: "DELETE",
+      },
+      signal
+    );
+  }
+
   async listDecks(signal?: AbortSignal): Promise<readonly MochiDeck[]> {
     const decks = new Map<string, MochiDeck>();
     const bookmarks = new Set<string>();
