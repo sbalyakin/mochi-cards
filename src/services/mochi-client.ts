@@ -145,6 +145,12 @@ export class MochiClient {
     );
   }
 
+  async getCard(cardId: string, signal?: AbortSignal): Promise<MochiCard> {
+    return parseMochiCardResponse(
+      await this.request(`${MOCHI_CARDS_URL}${encodeURIComponent(cardId)}`, { method: "GET" }, signal)
+    );
+  }
+
   async listDecks(signal?: AbortSignal): Promise<readonly MochiDeck[]> {
     const decks = new Map<string, MochiDeck>();
     const bookmarks = new Set<string>();
@@ -294,6 +300,21 @@ function parseCardPage(responseText: string): MochiCardPage {
     throw new MochiError("http", errorMessage(error, "Mochi returned an invalid card list"), undefined, {
       cause: error,
     });
+  }
+}
+
+function parseMochiCardResponse(responseText: string): MochiCard {
+  try {
+    const card = parseMochiCard(JSON.parse(responseText));
+    if (!card) {
+      throw new Error("Mochi returned an invalid card");
+    }
+    return card;
+  } catch (error: unknown) {
+    if (error instanceof MochiError) {
+      throw error;
+    }
+    throw new MochiError("http", errorMessage(error, "Mochi returned an invalid card"), undefined, { cause: error });
   }
 }
 

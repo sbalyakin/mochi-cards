@@ -5,6 +5,7 @@ import {
   ActionPanel,
   Alert,
   confirmAlert,
+  Detail,
   getPreferenceValues,
   Icon,
   Keyboard,
@@ -335,9 +336,9 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
     }
   }
 
-  async function deleteCard(card: MochiCard): Promise<void> {
+  async function deleteCard(card: MochiCard): Promise<boolean> {
     if (isDeletingCardRef.current) {
-      return;
+      return false;
     }
 
     const confirmed = await confirmAlert({
@@ -346,11 +347,11 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
       primaryAction: { title: "Delete Card", style: Alert.ActionStyle.Destructive },
     });
     if (!confirmed) {
-      return;
+      return false;
     }
 
     if (isDeletingCardRef.current) {
-      return;
+      return false;
     }
 
     isDeletingCardRef.current = true;
@@ -359,12 +360,14 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
       await client.deleteCard(card.id);
       await revalidate();
       await showToast({ style: Toast.Style.Success, title: "Card Deleted" });
+      return true;
     } catch (error: unknown) {
       await showToast({
         style: Toast.Style.Failure,
         title: "Could Not Delete Card",
         message: mochiErrorMessage(error),
       });
+      return false;
     } finally {
       isDeletingCardRef.current = false;
       setIsDeletingCard(false);
@@ -456,8 +459,16 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
               detail={<CardDetail card={card} deck={deck} template={template} />}
               actions={
                 <ActionPanel>
+                  <Action.Push
+                    title="Open Card"
+                    icon={Icon.Document}
+                    shortcut={Keyboard.Shortcut.Common.Open}
+                    target={
+                      <CardView card={card} client={client} template={template} onDelete={() => deleteCard(card)} />
+                    }
+                  />
                   <Action.CopyToClipboard
-                    title="Copy Card Markdown"
+                    title="Copy as Markdown"
                     content={cardMarkdown(card, template)}
                     shortcut={Keyboard.Shortcut.Common.Copy}
                   />
@@ -465,7 +476,6 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
                     title={isSortReversed ? "Use Default Sort Order" : "Reverse Sort Order"}
                     icon={isSortReversed ? Icon.ArrowUp : Icon.ArrowDown}
                     onAction={() => setIsSortReversed((reversed) => !reversed)}
-                    shortcut={Keyboard.Shortcut.Common.Open}
                   />
                   <Action
                     title="Reload Cards"
@@ -479,7 +489,9 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
                       icon={Icon.Trash}
                       shortcut={{ modifiers: ["cmd"], key: "d" }}
                       style={Action.Style.Destructive}
-                      onAction={() => deleteCard(card)}
+                      onAction={() => {
+                        void deleteCard(card);
+                      }}
                     />
                   </ActionPanel.Section>
                 </ActionPanel>
@@ -489,6 +501,98 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
         })
       )}
     </List>
+  );
+}
+
+function CardView({
+  card,
+  client,
+  template,
+  onDelete,
+}: {
+  readonly card: MochiCard;
+  readonly client: MochiClient;
+  readonly template?: MochiCatalogTemplate;
+  readonly onDelete: () => Promise<boolean>;
+}) {
+  const { pop } = useNavigation();
+  const reloadAbortable = useRef<AbortController | undefined>(undefined);
+  const [currentCard, setCurrentCard] = useState(card);
+  const [isReloading, setIsReloading] = useState(false);
+
+  useEffect(
+    () => () => {
+      reloadAbortable.current?.abort(new Error("Card view closed"));
+    },
+    []
+  );
+
+  async function deleteCard(): Promise<void> {
+    if (await onDelete()) {
+      pop();
+    }
+  }
+
+  async function reloadCard(): Promise<void> {
+    if (reloadAbortable.current) {
+      return;
+    }
+
+    const controller = new AbortController();
+    reloadAbortable.current = controller;
+    setIsReloading(true);
+    try {
+      const updatedCard = await client.getCard(currentCard.id, controller.signal);
+      if (!controller.signal.aborted) {
+        setCurrentCard(updatedCard);
+        await showToast({ style: Toast.Style.Success, title: "Card Reloaded" });
+      }
+    } catch (error: unknown) {
+      if (!controller.signal.aborted) {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: "Could Not Reload Card",
+          message: mochiErrorMessage(error),
+        });
+      }
+    } finally {
+      if (reloadAbortable.current === controller) {
+        reloadAbortable.current = undefined;
+        setIsReloading(false);
+      }
+    }
+  }
+
+  return (
+    <Detail
+      isLoading={isReloading}
+      navigationTitle={cardTitle(currentCard)}
+      markdown={cardMarkdown(currentCard, template)}
+      actions={
+        <ActionPanel>
+          <Action.CopyToClipboard
+            title="Copy as Markdown"
+            content={cardMarkdown(currentCard, template)}
+            shortcut={Keyboard.Shortcut.Common.Copy}
+          />
+          <Action
+            title="Reload Card"
+            icon={Icon.ArrowClockwise}
+            shortcut={Keyboard.Shortcut.Common.Refresh}
+            onAction={reloadCard}
+          />
+          <ActionPanel.Section title="Danger Zone">
+            <Action
+              title="Delete Card"
+              icon={Icon.Trash}
+              shortcut={{ modifiers: ["cmd"], key: "d" }}
+              style={Action.Style.Destructive}
+              onAction={deleteCard}
+            />
+          </ActionPanel.Section>
+        </ActionPanel>
+      }
+    />
   );
 }
 

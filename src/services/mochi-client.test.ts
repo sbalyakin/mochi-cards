@@ -57,6 +57,32 @@ describe("MochiClient", () => {
     expect(init?.body).toBeUndefined();
   });
 
+  it("loads a card", async () => {
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "card-1",
+          "deck-id": "deck-1",
+          content: "# Updated card",
+          name: "Updated card",
+        })
+      )
+    );
+    const client = new MochiClient("secret-key", fetch);
+
+    await expect(client.getCard("card-1")).resolves.toMatchObject({
+      id: "card-1",
+      deckId: "deck-1",
+      content: "# Updated card",
+      name: "Updated card",
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "https://app.mochi.cards/api/cards/card-1",
+      expect.objectContaining({ method: "GET" })
+    );
+  });
+
   it("distinguishes authentication and validation failures", async () => {
     const unauthorized = new MochiClient("bad", async () => new Response("", { status: 401 }));
     const invalid = new MochiClient(
