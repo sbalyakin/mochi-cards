@@ -7,23 +7,34 @@ import { TemplateRepository } from "./storage/template-repository";
 
 const repository = new TemplateRepository();
 
-export default function GenerateCard() {
+type GenerateCardProps = {
+  readonly deckId?: string;
+};
+
+export default function GenerateCard({ deckId }: GenerateCardProps = {}) {
   const { data: templates = [], error, isLoading } = usePromise(() => repository.list(), []);
+  const matchingTemplates = deckId ? templates.filter((template) => template.deckId === deckId) : templates;
+
+  if (deckId && !isLoading && !error && matchingTemplates.length === 1) {
+    return <GenerationInputForm template={matchingTemplates[0]} />;
+  }
 
   return (
     <List isLoading={isLoading} navigationTitle="Create Card" searchBarPlaceholder="Choose a template">
-      {templates.length === 0 ? (
+      {matchingTemplates.length === 0 ? (
         <List.EmptyView
           icon={error ? Icon.Warning : Icon.Stars}
-          title={error ? "Could Not Load Templates" : "No Templates Available"}
+          title={error ? "Could Not Load Templates" : deckId ? "No Templates for This Deck" : "No Templates Available"}
           description={
             error
               ? errorMessage(error)
-              : "Create a template with the Manage Templates command, then return here to generate a card."
+              : deckId
+                ? "Create a template for this deck with the Manage Templates command, then return here."
+                : "Create a template with the Manage Templates command, then return here to generate a card."
           }
         />
       ) : (
-        templates.map((template) => {
+        matchingTemplates.map((template) => {
           const aiFieldCount = parseTemplate(template.content).filter((segment) => segment.kind === "ai").length;
           return (
             <List.Item

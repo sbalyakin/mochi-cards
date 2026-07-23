@@ -18,6 +18,7 @@ import { useCachedPromise, usePromise } from "@raycast/utils";
 import { useEffect, useRef, useState } from "react";
 
 import { CARD_SORT_OPTIONS, cardTitle, isCardSort, isSortDescending, sortCards, type CardSort } from "./card-sorting";
+import GenerateCard from "./generate-card";
 import { cardMarkdown } from "./mochi-card-content";
 import {
   isMochiDeckNotFoundError,
@@ -461,12 +462,20 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
               {isDeckNotFound ? (
                 <Action title="Back to Decks" icon={Icon.ArrowLeft} onAction={pop} />
               ) : (
-                <Action
-                  title="Reload Cards"
-                  icon={Icon.ArrowClockwise}
-                  shortcut={Keyboard.Shortcut.Common.Refresh}
-                  onAction={reloadCards}
-                />
+                <>
+                  <Action.Push
+                    title="Create Card"
+                    icon={Icon.Plus}
+                    shortcut={Keyboard.Shortcut.Common.New}
+                    target={<GenerateCard deckId={deck.id} />}
+                  />
+                  <Action
+                    title="Reload Cards"
+                    icon={Icon.ArrowClockwise}
+                    shortcut={Keyboard.Shortcut.Common.Refresh}
+                    onAction={reloadCards}
+                  />
+                </>
               )}
             </ActionPanel>
           }
@@ -490,6 +499,12 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
                     target={
                       <CardView card={card} client={client} template={template} onDelete={() => deleteCard(card)} />
                     }
+                  />
+                  <Action.Push
+                    title="Create Card"
+                    icon={Icon.Plus}
+                    shortcut={Keyboard.Shortcut.Common.New}
+                    target={<GenerateCard deckId={deck.id} />}
                   />
                   <Action.CopyToClipboard
                     title="Copy as Markdown"
