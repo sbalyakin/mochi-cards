@@ -39,7 +39,7 @@ export default function GenerateCard({ deckId }: GenerateCardProps = {}) {
           return (
             <List.Item
               key={template.id}
-              icon={Icon.Stars}
+              icon={Icon.Snippets}
               title={template.name}
               subtitle={template.deckName}
               accessories={[
