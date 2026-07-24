@@ -67,8 +67,6 @@ export default function BrowseCards() {
   const { mochiApiKey } = getPreferenceValues<Preferences.BrowseCards>();
   const client = new MochiClient(mochiApiKey);
   const browseDataAbortable = useRef<AbortController | undefined>(undefined);
-  const reloadAbortable = useRef<AbortController | undefined>(undefined);
-  const [isReloading, setIsReloading] = useState(false);
   const [isCatalogInvalidated, setIsCatalogInvalidated] = useState(false);
   const [, setCatalogRevision] = useState(0);
   let cachedCatalog: MochiCatalog | undefined;
@@ -78,7 +76,7 @@ export default function BrowseCards() {
   } catch (error: unknown) {
     catalogCacheError = error;
   }
-  const shouldLoadCatalog = cachedCatalog === undefined && catalogCacheError === undefined && !isReloading;
+  const shouldLoadCatalog = cachedCatalog === undefined && catalogCacheError === undefined;
   const {
     data: loadedCatalog,
     error: initialCatalogError,
@@ -96,46 +94,6 @@ export default function BrowseCards() {
     isLoading: isLoadingSelection,
     revalidate: revalidateSelection,
   } = usePromise(() => deckSelectionRepository.list(), []);
-
-  useEffect(
-    () => () => {
-      reloadAbortable.current?.abort(new Error("Browse Cards closed"));
-    },
-    []
-  );
-
-  async function reloadDecks(): Promise<void> {
-    if (isLoadingBrowseData || reloadAbortable.current) {
-      return;
-    }
-
-    const controller = new AbortController();
-    reloadAbortable.current = controller;
-    setIsReloading(true);
-    try {
-      const catalog = await fetchAndCacheMochiCatalog(client, controller.signal);
-      setIsCatalogInvalidated(false);
-      setCatalogRevision((revision) => revision + 1);
-      await showToast({
-        style: Toast.Style.Success,
-        title: "Decks Reloaded",
-        message: `${catalog.decks.length} deck${catalog.decks.length === 1 ? "" : "s"}`,
-      });
-    } catch (error: unknown) {
-      if (!controller.signal.aborted) {
-        await showToast({
-          style: Toast.Style.Failure,
-          title: "Could Not Reload Decks",
-          message: mochiErrorMessage(error),
-        });
-      }
-    } finally {
-      if (reloadAbortable.current === controller) {
-        reloadAbortable.current = undefined;
-        setIsReloading(false);
-      }
-    }
-  }
 
   function invalidateCatalog(): void {
     mochiCatalogRepository.clear();
@@ -209,7 +167,7 @@ export default function BrowseCards() {
 
   return (
     <List
-      isLoading={isLoadingBrowseData || isLoadingSelection || isReloading}
+      isLoading={isLoadingBrowseData || isLoadingSelection}
       navigationTitle="Browse Cards"
       searchBarPlaceholder="Search visible decks"
     >
@@ -218,15 +176,7 @@ export default function BrowseCards() {
           icon={Icon.Warning}
           title={browseDataError ? "Could Not Load Decks or Templates" : "Could Not Load Deck Settings"}
           description={browseDataError ? mochiErrorMessage(browseDataError) : errorMessage(selectionError)}
-          actions={
-            <ActionPanel>
-              {browseDataError ? (
-                <Action title="Reload Decks" icon={Icon.ArrowClockwise} onAction={reloadDecks} />
-              ) : (
-                configureAction
-              )}
-            </ActionPanel>
-          }
+          actions={<ActionPanel>{configureAction}</ActionPanel>}
         />
       ) : isCatalogInvalidated ? (
         <List.EmptyView
@@ -238,24 +188,15 @@ export default function BrowseCards() {
         <List.EmptyView
           icon={Icon.Book}
           title="No Decks Found"
-          description="Create a deck in Mochi, then reload this command."
-          actions={
-            <ActionPanel>
-              <Action title="Reload Decks" icon={Icon.ArrowClockwise} onAction={reloadDecks} />
-            </ActionPanel>
-          }
+          description="Create a deck in Mochi, then configure the visible decks."
+          actions={<ActionPanel>{configureAction}</ActionPanel>}
         />
       ) : visibleDecks.length === 0 ? (
         <List.EmptyView
           icon={Icon.Eye}
           title="No Visible Decks"
           description="Choose which Mochi decks you want to browse."
-          actions={
-            <ActionPanel>
-              {configureAction}
-              <Action title="Reload Decks" icon={Icon.ArrowClockwise} onAction={reloadDecks} />
-            </ActionPanel>
-          }
+          actions={<ActionPanel>{configureAction}</ActionPanel>}
         />
       ) : (
         visibleDecks.map((deck) => (
@@ -272,7 +213,7 @@ export default function BrowseCards() {
               <ActionPanel>
                 <Action.Push
                   title="Browse Cards"
-                  icon={Icon.ArrowRight}
+                  icon={Icon.List}
                   target={
                     <CardList
                       client={client}
@@ -285,7 +226,6 @@ export default function BrowseCards() {
                   }
                 />
                 {configureAction}
-                <Action title="Reload Decks" icon={Icon.ArrowClockwise} onAction={reloadDecks} />
               </ActionPanel>
             }
           />
