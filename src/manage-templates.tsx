@@ -56,7 +56,7 @@ export default function ManageTemplates() {
       title="Create Template"
       icon={Icon.Plus}
       shortcut={Keyboard.Shortcut.Common.New}
-      target={<TemplateForm repository={repository} onSaved={refresh} />}
+      target={<TemplateForm repository={repository} onSaved={refresh} onDeleted={refresh} />}
     />
   );
 
@@ -88,7 +88,9 @@ export default function ManageTemplates() {
                 <Action.Push
                   title="Edit Template"
                   icon={Icon.Pencil}
-                  target={<TemplateForm repository={repository} template={template} onSaved={refresh} />}
+                  target={
+                    <TemplateForm repository={repository} template={template} onSaved={refresh} onDeleted={refresh} />
+                  }
                 />
                 {createAction}
                 <Action

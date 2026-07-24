@@ -1,4 +1,15 @@
-import { Action, ActionPanel, Detail, getPreferenceValues, Icon, showToast, Toast, useNavigation } from "@raycast/api";
+import {
+  Action,
+  ActionPanel,
+  Alert,
+  confirmAlert,
+  Detail,
+  getPreferenceValues,
+  Icon,
+  showToast,
+  Toast,
+  useNavigation,
+} from "@raycast/api";
 import { useEffect, useRef, useState } from "react";
 
 import {
@@ -17,11 +28,20 @@ import {
   type GeneratedSession,
   type GenerationSession,
 } from "../domain/generation-session";
+import { cardChangedSinceOpen, mergeUpdateFields } from "../domain/edit-card";
 import type { CardTemplate, FieldValues } from "../domain/template";
 import { detectTemplateDrift, refreshTemplateSnapshot } from "../domain/mochi-template";
+import { cardMarkdown } from "../mochi-card-content";
 import { renderRaycastMarkdown } from "../raycast-markdown";
-import { MochiClient, MochiError, toMochiTemplateSnapshot } from "../services/mochi-client";
+import {
+  MochiClient,
+  MochiError,
+  toMochiTemplateSnapshot,
+  type MochiCard,
+  type MochiTemplate,
+} from "../services/mochi-client";
 import { RaycastAiClient } from "../services/raycast-ai-client";
+import { CardGenerationContextRepository } from "../storage/card-generation-context-repository";
 import { MarkdownEditor } from "./markdown-editor";
 import { MochiValuesEditor } from "./mochi-values-editor";
 import { SaveMarkdownForm } from "./save-markdown-form";
@@ -29,7 +49,14 @@ import { SaveMarkdownForm } from "./save-markdown-form";
 type CardPreviewProps = {
   readonly template: CardTemplate;
   readonly values: FieldValues;
-  readonly onCardAdded: () => void;
+  readonly mode:
+    | { readonly kind: "create"; readonly onCardAdded: () => void }
+    | {
+        readonly kind: "update";
+        readonly card: MochiCard;
+        readonly onBack: () => void;
+        readonly onCardUpdated: (card: MochiCard, template: MochiTemplate, signal: AbortSignal) => Promise<void> | void;
+      };
 };
 
 type Preferences = {
@@ -37,16 +64,21 @@ type Preferences = {
 };
 
 const aiClient = new RaycastAiClient();
+const contextRepository = new CardGenerationContextRepository();
 
-export function CardPreview({ template, values, onCardAdded }: CardPreviewProps) {
+export function CardPreview({ template, values, mode }: CardPreviewProps) {
   const { pop } = useNavigation();
   const [session, setSession] = useState<GenerationSession | undefined>(undefined);
+  const [previewMochiTemplate, setPreviewMochiTemplate] = useState<MochiTemplate | undefined>(undefined);
   const [isWorking, setIsWorking] = useState(true);
   const [creationLog, setCreationLog] = useState<readonly string[]>([]);
   const operationNumber = useRef(0);
   const activeController = useRef<AbortController | undefined>(undefined);
   const markdown = session ? renderMarkdown(session) : "";
-  const previewMarkdown = renderRaycastMarkdown(markdown);
+  const previewMarkdown =
+    session && previewMochiTemplate
+      ? renderMochiTemplatePreview(session, previewMochiTemplate, mode)
+      : renderRaycastMarkdown(markdown);
   const creationMarkdown = creationLog.join("  \n");
   const fieldErrors = session ? getAiFieldErrors(session) : [];
   const isCardBodySession = session
@@ -62,14 +94,17 @@ export function CardPreview({ template, values, onCardAdded }: CardPreviewProps)
     async function generateInitialSession(controller: AbortController): Promise<void> {
       try {
         let generationTemplate = template;
+        let livePreviewTemplate: MochiTemplate | undefined;
         if (template.output.kind === "mochi-template") {
           if (template.output.target.status === "needs-configuration") {
             throw new Error("Mochi template mappings need configuration");
           }
           const { mochiApiKey } = getPreferenceValues<Preferences>();
-          const live = toMochiTemplateSnapshot(
-            await new MochiClient(mochiApiKey).getTemplate(template.output.target.template.id, controller.signal)
+          const liveTemplate = await new MochiClient(mochiApiKey).getTemplate(
+            template.output.target.template.id,
+            controller.signal
           );
+          const live = toMochiTemplateSnapshot(liveTemplate);
           const drift = detectTemplateDrift(template.output.target.template, live, template.output.target.bindings);
           if (drift.length > 0) {
             throw new Error(`${drift[0].message}. Edit the local template mappings.`);
@@ -84,11 +119,13 @@ export function CardPreview({ template, values, onCardAdded }: CardPreviewProps)
               },
             },
           };
+          livePreviewTemplate = liveTemplate;
         }
         const generated = await generateSession(generationTemplate, values, aiClient, controller.signal, logProgress);
         if (controller.signal.aborted) {
           return;
         }
+        setPreviewMochiTemplate(livePreviewTemplate);
         setSession(generated);
         const errors = getAiFieldErrors(generated);
         if (errors.length > 0) {
@@ -105,7 +142,14 @@ export function CardPreview({ template, values, onCardAdded }: CardPreviewProps)
             title: "Could not generate card",
             message: errorMessage(error),
           });
-          pop();
+          if (controller.signal.aborted) {
+            return;
+          }
+          if (mode.kind === "create") {
+            pop();
+          } else {
+            mode.onBack();
+          }
         }
       } finally {
         if (activeController.current === controller) {
@@ -125,6 +169,7 @@ export function CardPreview({ template, values, onCardAdded }: CardPreviewProps)
     return () => {
       clearTimeout(startTimer);
       controller?.abort(new Error("Preview closed"));
+      activeController.current?.abort(new Error("Preview closed"));
     };
   }, [template, values]);
 
@@ -166,7 +211,7 @@ export function CardPreview({ template, values, onCardAdded }: CardPreviewProps)
     }
   }
 
-  async function addToMochi(): Promise<void> {
+  async function saveToMochi(): Promise<void> {
     if (!ready || activeController.current) {
       return;
     }
@@ -177,30 +222,155 @@ export function CardPreview({ template, values, onCardAdded }: CardPreviewProps)
     try {
       const { mochiApiKey } = getPreferenceValues<Preferences>();
       const mochiOutput = getMochiOutput(session);
-      const card = await new MochiClient(mochiApiKey).createCard(
-        {
-          deckId: template.deckId,
-          tags: template.tags,
-          reviewReverse: template.reviewReverse,
-          archived: template.archived,
-          output: mochiOutput
-            ? { kind: "mochi-template", templateId: mochiOutput.templateId, fields: mochiOutput.fields }
-            : { kind: "card-body", content: markdown },
-        },
-        controller.signal
-      );
-      await showToast({
-        style: Toast.Style.Success,
-        title: "Card added to Mochi",
-        message: card.id ? `Card ID: ${card.id}` : template.name,
-      });
-      onCardAdded();
-      pop();
+      const client = new MochiClient(mochiApiKey);
+      if (mode.kind === "create") {
+        const card = await client.createCard(
+          {
+            deckId: template.deckId,
+            tags: template.tags,
+            reviewReverse: template.reviewReverse,
+            archived: template.archived,
+            output: mochiOutput
+              ? { kind: "mochi-template", templateId: mochiOutput.templateId, fields: mochiOutput.fields }
+              : { kind: "card-body", content: markdown },
+          },
+          controller.signal
+        );
+        if (controller.signal.aborted) {
+          return;
+        }
+        await showToast({
+          style: Toast.Style.Success,
+          title: "Card added to Mochi",
+          message: card.id ? `Card ID: ${card.id}` : template.name,
+        });
+        if (controller.signal.aborted) {
+          return;
+        }
+        if (card.id && mochiOutput) {
+          await saveContextWithWarning(card.id, template, values, mochiOutput.templateId, controller.signal);
+        } else if (mochiOutput) {
+          await showToast({
+            style: Toast.Style.Failure,
+            title: "Card Added, but Edit Context Was Not Saved",
+            message: "Mochi did not return a card ID, so this card's generation inputs cannot be restored later.",
+          });
+        }
+        if (controller.signal.aborted) {
+          return;
+        }
+        mode.onCardAdded();
+        if (controller.signal.aborted) {
+          return;
+        }
+        pop();
+      } else {
+        if (!mochiOutput) {
+          throw new Error("Edit Card requires a Mochi template output");
+        }
+        if (!previewMochiTemplate || previewMochiTemplate.id !== mochiOutput.templateId) {
+          throw new Error("Live Mochi template is unavailable");
+        }
+        if (template.output.kind !== "mochi-template" || template.output.target.status !== "configured") {
+          throw new Error("Edit Card requires configured Mochi template mappings");
+        }
+        let comparisonCard = mode.card;
+        let current: MochiCard;
+        let currentMochiTemplate: MochiTemplate;
+        while (true) {
+          [current, currentMochiTemplate] = await Promise.all([
+            client.getCard(mode.card.id, controller.signal),
+            client.getTemplate(mochiOutput.templateId, controller.signal),
+          ]);
+          const drift = detectTemplateDrift(
+            toMochiTemplateSnapshot(previewMochiTemplate),
+            toMochiTemplateSnapshot(currentMochiTemplate),
+            template.output.target.bindings
+          );
+          if (drift.length > 0) {
+            throw new Error(`${drift[0].message}. Edit the local template mappings.`);
+          }
+          if (current.deckId !== mode.card.deckId) {
+            throw new Error("Card moved to another Mochi deck. Reopen it from the new deck before editing.");
+          }
+          if (comparisonCard.templateId !== current.templateId) {
+            const changesTemplate = current.templateId !== mochiOutput.templateId;
+            const confirmed = await confirmAlert({
+              icon: Icon.Warning,
+              title: "Card Template Changed in Mochi",
+              message: changesTemplate
+                ? `The card now uses a different template. Continuing will switch it to “${currentMochiTemplate.name}” and replace its fields.`
+                : "The card now uses this edit session's template. Overwrite its latest fields?",
+              primaryAction: {
+                title: changesTemplate ? "Switch Template and Overwrite" : "Overwrite New Template",
+                style: Alert.ActionStyle.Destructive,
+              },
+            });
+            if (controller.signal.aborted || !confirmed) {
+              return;
+            }
+            comparisonCard = current;
+            continue;
+          }
+          if (!cardChangedSinceOpen(comparisonCard, current)) {
+            break;
+          }
+          const confirmed = await confirmAlert({
+            icon: Icon.Warning,
+            title: "Card Changed in Mochi",
+            message: "The card changed after editing started. Overwrite generated fields on top of the latest version?",
+            primaryAction: { title: "Overwrite Latest", style: Alert.ActionStyle.Destructive },
+          });
+          if (controller.signal.aborted || !confirmed) {
+            return;
+          }
+          comparisonCard = current;
+        }
+        const currentFieldIds = new Set(currentMochiTemplate.fields.map((field) => field.id));
+        const fields = Object.fromEntries(
+          Object.entries(mergeUpdateFields(current, mochiOutput.templateId, mochiOutput.fields)).filter(([id]) =>
+            currentFieldIds.has(id)
+          )
+        );
+        await client.updateCard(mode.card.id, { templateId: mochiOutput.templateId, fields }, controller.signal);
+        let updatedCard: MochiCard = {
+          ...current,
+          content: "",
+          templateId: mochiOutput.templateId,
+          fields: Object.entries(fields).map(([id, value]) => ({ id, value })),
+        };
+        let refreshError: unknown;
+        try {
+          updatedCard = await client.getCard(mode.card.id, controller.signal);
+        } catch (error: unknown) {
+          refreshError = error;
+        }
+        if (controller.signal.aborted) {
+          return;
+        }
+        await showToast(
+          refreshError
+            ? {
+                style: Toast.Style.Failure,
+                title: "Card Updated, but Refresh Failed",
+                message: mochiErrorMessage(refreshError),
+              }
+            : { style: Toast.Style.Success, title: "Card updated in Mochi" }
+        );
+        if (controller.signal.aborted) {
+          return;
+        }
+        await saveContextWithWarning(mode.card.id, template, values, mochiOutput.templateId, controller.signal);
+        if (controller.signal.aborted) {
+          return;
+        }
+        await mode.onCardUpdated(updatedCard, currentMochiTemplate, controller.signal);
+      }
     } catch (error: unknown) {
       if (!controller.signal.aborted) {
         await showToast({
           style: Toast.Style.Failure,
-          title: "Could not add card to Mochi",
+          title: mode.kind === "create" ? "Could not add card to Mochi" : "Could not update card in Mochi",
           message: mochiErrorMessage(error),
         });
       }
@@ -214,18 +384,32 @@ export function CardPreview({ template, values, onCardAdded }: CardPreviewProps)
 
   const generatedSession = session?.mode === "generated" ? session : undefined;
   const manuallyEditedSession = session?.mode === "manually-edited" ? session : undefined;
+  const visibleTags = mode.kind === "create" ? template.tags : mode.card.tags;
   const status = !session
-    ? "Creating card"
+    ? mode.kind === "create"
+      ? "Creating card"
+      : "Updating card"
     : session.mode === "manually-edited"
       ? "Manually edited"
       : fieldErrors.length > 0
         ? "Needs attention"
         : "Ready";
 
+  function leavePreview(): void {
+    activeController.current?.abort(new Error("Preview closed"));
+    if (mode.kind === "create") {
+      pop();
+    } else {
+      mode.onBack();
+    }
+  }
+
   return (
     <Detail
       isLoading={isWorking}
-      navigationTitle={session ? `${template.name} Preview` : `Creating ${template.name}`}
+      navigationTitle={
+        session ? `${template.name} Preview` : `${mode.kind === "create" ? "Creating" : "Updating"} ${template.name}`
+      }
       markdown={session ? previewMarkdown || "_No generated content yet._" : creationMarkdown}
       metadata={
         <Detail.Metadata>
@@ -236,9 +420,9 @@ export function CardPreview({ template, values, onCardAdded }: CardPreviewProps)
             text={status}
             icon={session && fieldErrors.length > 0 ? Icon.Warning : session ? Icon.CheckCircle : Icon.Clock}
           />
-          {template.tags.length > 0 ? (
+          {visibleTags.length > 0 ? (
             <Detail.Metadata.TagList title="Tags">
-              {template.tags.map((tag) => (
+              {visibleTags.map((tag) => (
                 <Detail.Metadata.TagList.Item key={tag} text={tag} />
               ))}
             </Detail.Metadata.TagList>
@@ -258,7 +442,13 @@ export function CardPreview({ template, values, onCardAdded }: CardPreviewProps)
         <ActionPanel>
           {session ? (
             <>
-              {ready ? <Action title="Add to Mochi" icon={Icon.Upload} onAction={addToMochi} /> : null}
+              {ready ? (
+                <Action
+                  title={mode.kind === "create" ? "Add to Mochi" : "Update Card in Mochi"}
+                  icon={Icon.Upload}
+                  onAction={saveToMochi}
+                />
+              ) : null}
               {generatedSession?.output.kind === "card-body" ? (
                 <Action.Push
                   title="Edit Markdown"
@@ -317,7 +507,7 @@ export function CardPreview({ template, values, onCardAdded }: CardPreviewProps)
                   ) : null}
                 </>
               ) : null}
-              <Action title="Back to Input" icon={Icon.ArrowLeft} onAction={pop} />
+              <Action title="Back to Input" icon={Icon.ArrowLeft} onAction={leavePreview} />
               {isCardBodySession ? <Action.CopyToClipboard title="Copy Markdown" content={markdown} /> : null}
               {isCardBodySession ? (
                 <Action.Push
@@ -335,12 +525,73 @@ export function CardPreview({ template, values, onCardAdded }: CardPreviewProps)
               ) : null}
             </>
           ) : (
-            <Action title="Cancel Creation" icon={Icon.Stop} onAction={pop} />
+            <Action
+              title={mode.kind === "create" ? "Cancel Creation" : "Cancel Update"}
+              icon={Icon.Stop}
+              onAction={leavePreview}
+            />
           )}
         </ActionPanel>
       }
     />
   );
+}
+
+function renderMochiTemplatePreview(
+  session: GenerationSession,
+  template: MochiTemplate,
+  mode: CardPreviewProps["mode"]
+): string {
+  const output = getMochiOutput(session);
+  if (!output || output.templateId !== template.id) {
+    return renderRaycastMarkdown(renderMarkdown(session));
+  }
+  const values =
+    mode.kind === "update" ? mergeUpdateFields(mode.card, output.templateId, output.fields) : output.fields;
+  const card: MochiCard = {
+    ...(mode.kind === "update"
+      ? mode.card
+      : {
+          id: "preview",
+          deckId: "",
+          name: null,
+          tags: [],
+          reviews: [],
+          aiCacheEntries: [],
+        }),
+    content: "",
+    templateId: output.templateId,
+    fields: Object.entries(values).map(([id, value]) => ({ id, value })),
+    aiCacheEntries:
+      mode.kind === "update" && mode.card.templateId === output.templateId ? mode.card.aiCacheEntries : [],
+  };
+  return cardMarkdown(card, template);
+}
+
+async function saveContextWithWarning(
+  cardId: string,
+  template: CardTemplate,
+  values: FieldValues,
+  mochiTemplateId: string,
+  signal: AbortSignal
+): Promise<void> {
+  try {
+    await contextRepository.save({
+      cardId,
+      generationTemplateId: template.id,
+      generationTemplateUpdatedAt: template.updatedAt,
+      mochiTemplateId,
+      inputValues: values,
+    });
+  } catch (error: unknown) {
+    if (!signal.aborted) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Card saved, but edit context was not",
+        message: errorMessage(error),
+      });
+    }
+  }
 }
 
 function generationProgressMessage(progress: GenerationProgress): string {

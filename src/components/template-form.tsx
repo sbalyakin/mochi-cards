@@ -14,9 +14,14 @@ import {
   useNavigation,
 } from "@raycast/api";
 import { usePromise } from "@raycast/utils";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { classifyMochiField, createAutomaticBindings, isDirectBindingCompatible } from "../domain/mochi-template";
+import {
+  classifyMochiField,
+  createAutomaticBindings,
+  detectTemplateDrift,
+  isDirectBindingCompatible,
+} from "../domain/mochi-template";
 import type {
   CardOutput,
   CardTemplate,
@@ -32,7 +37,14 @@ import type { TemplateRepository } from "../storage/template-repository";
 type TemplateFormProps = {
   readonly repository: TemplateRepository;
   readonly template?: CardTemplate;
-  readonly onSaved: () => Promise<void> | void;
+  readonly initialDraft?: CardTemplateDraft;
+  readonly onSaved: (savedTemplate: CardTemplate) => Promise<void> | void;
+  readonly onDeleted?: () => Promise<void> | void;
+  readonly submitTitle?: string;
+  readonly closeAfterSave?: boolean;
+  readonly warnings?: readonly string[];
+  readonly allowDelete?: boolean;
+  readonly validateDraft?: (draft: CardTemplateDraft) => string | undefined;
 };
 
 type Preferences = { readonly mochiApiKey: string };
@@ -41,13 +53,27 @@ const NO_TEMPLATE_VALUE = "__no-template__";
 const UNMAPPED_VALUE = "__unmapped__";
 const CUSTOM_VALUE = "__custom__";
 
-export function TemplateForm({ repository, template, onSaved }: TemplateFormProps) {
+export function TemplateForm({
+  repository,
+  template,
+  initialDraft,
+  onSaved,
+  onDeleted,
+  submitTitle,
+  closeAfterSave = true,
+  warnings = [],
+  allowDelete = true,
+  validateDraft,
+}: TemplateFormProps) {
   const { pop } = useNavigation();
   const { mochiApiKey } = getPreferenceValues<Preferences>();
-  const initialTarget = template?.output.kind === "mochi-template" ? template.output.target : undefined;
+  const initial = template ?? initialDraft;
+  const initialTarget = initial?.output.kind === "mochi-template" ? initial.output.target : undefined;
   const initialSnapshot = initialTarget?.status === "configured" ? initialTarget.template : undefined;
-  const [name, setName] = useState(template?.name ?? "");
-  const [deckId, setDeckId] = useState(template?.deckId ?? "");
+  const initialMochiTemplateId =
+    initialTarget?.status === "configured" ? initialTarget.template.id : initialTarget?.templateId;
+  const [name, setName] = useState(initial?.name ?? "");
+  const [deckId, setDeckId] = useState(initial?.deckId ?? "");
   const [mochiTemplateId, setMochiTemplateId] = useState(
     initialTarget
       ? initialTarget.status === "configured"
@@ -55,35 +81,50 @@ export function TemplateForm({ repository, template, onSaved }: TemplateFormProp
         : initialTarget.templateId
       : NO_TEMPLATE_VALUE
   );
-  const [tags, setTags] = useState(template?.tags.join(", ") ?? "");
-  const [cardBody, setCardBody] = useState(template?.cardBody ?? "");
-  const [reviewReverse, setReviewReverse] = useState(template?.reviewReverse ?? false);
-  const [archived, setArchived] = useState(template?.archived ?? false);
-  const [fields, setFields] = useState<readonly TemplateInputField[]>(template?.fields ?? [createInitialField()]);
+  const [tags, setTags] = useState(initial?.tags.join(", ") ?? "");
+  const [cardBody, setCardBody] = useState(initial?.cardBody ?? "");
+  const [reviewReverse, setReviewReverse] = useState(initial?.reviewReverse ?? false);
+  const [archived, setArchived] = useState(initial?.archived ?? false);
+  const [fields, setFields] = useState<readonly TemplateInputField[]>(initial?.fields ?? [createInitialField()]);
   const [bindings, setBindings] = useState<readonly MochiFieldBinding[]>(
     initialTarget?.status === "configured" ? initialTarget.bindings : []
   );
-  const [selectedSnapshotOverride, setSelectedSnapshotOverride] = useState<MochiTemplateSnapshot | undefined>(
-    initialSnapshot
-  );
+  const [selectedSnapshotOverride, setSelectedSnapshotOverride] = useState<MochiTemplateSnapshot | undefined>();
   const [showValidation, setShowValidation] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingTemplate, setIsLoadingTemplate] = useState(false);
   const saving = useRef(false);
-  const { data: catalog } = usePromise(async () => {
+  const activeSaveController = useRef<AbortController | undefined>(undefined);
+  const activeTemplateLoadController = useRef<AbortController | undefined>(undefined);
+  const isMounted = useRef(true);
+  const saveOperationNumber = useRef(0);
+  const templateLoadOperationNumber = useRef(0);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+      saveOperationNumber.current += 1;
+      templateLoadOperationNumber.current += 1;
+      activeSaveController.current?.abort(new Error("Template form closed"));
+      activeTemplateLoadController.current?.abort(new Error("Template form closed"));
+    };
+  }, []);
+
+  const { data: catalog, isLoading: isLoadingCatalog } = usePromise(async () => {
     const client = new MochiClient(mochiApiKey);
     const decks = await loadCatalogPart(() => client.listDecks());
     const mochiTemplates = await loadCatalogPart(() => client.listTemplates());
-    const selectedTemplate =
-      initialTarget?.status === "needs-configuration"
-        ? await loadCatalogPart(() => client.getTemplate(initialTarget.templateId))
-        : undefined;
+    const selectedTemplate = initialMochiTemplateId
+      ? await loadCatalogPart(() => client.getTemplate(initialMochiTemplateId))
+      : undefined;
     return { decks, mochiTemplates, selectedTemplate };
   }, []);
   const decks = catalog?.decks.data ?? [];
   const mochiTemplates = catalog?.mochiTemplates.data ?? [];
   const selectedDeck = decks.find((deck) => deck.id === deckId);
   const selectedLiveTemplate = mochiTemplates.find((candidate) => candidate.id === mochiTemplateId);
+  const selectedLiveSnapshot = selectedLiveTemplate ? toMochiTemplateSnapshot(selectedLiveTemplate) : undefined;
   const loadedSelectedSnapshot = catalog?.selectedTemplate?.data
     ? toMochiTemplateSnapshot(catalog.selectedTemplate.data)
     : undefined;
@@ -92,13 +133,17 @@ export function TemplateForm({ repository, template, onSaved }: TemplateFormProp
       ? selectedSnapshotOverride
       : loadedSelectedSnapshot?.id === mochiTemplateId
         ? loadedSelectedSnapshot
-        : undefined;
+        : selectedLiveSnapshot?.id === mochiTemplateId
+          ? selectedLiveSnapshot
+          : catalog === undefined && initialSnapshot?.id === mochiTemplateId
+            ? initialSnapshot
+            : undefined;
   const activeBindings = selectedSnapshot ? removeUnsupportedBindings(bindings, selectedSnapshot) : bindings;
   const output = createOutput(mochiTemplateId, selectedSnapshot, activeBindings);
   const draft = createDraft({
     name,
     deckId,
-    deckName: selectedDeck?.name ?? template?.deckName ?? "",
+    deckName: selectedDeck?.name ?? initial?.deckName ?? "",
     tags,
     cardBody,
     output,
@@ -115,6 +160,14 @@ export function TemplateForm({ repository, template, onSaved }: TemplateFormProp
     if (saving.current) {
       return;
     }
+    if (isLoadingCatalog) {
+      await showToast({ style: Toast.Style.Animated, title: "Loading current Mochi template" });
+      return;
+    }
+    if (isLoadingTemplate || activeTemplateLoadController.current) {
+      await showToast({ style: Toast.Style.Animated, title: "Loading selected Mochi template" });
+      return;
+    }
     setShowValidation(true);
     const errors = validateTemplate(draft);
     if (errors.length > 0) {
@@ -125,60 +178,143 @@ export function TemplateForm({ repository, template, onSaved }: TemplateFormProp
       });
       return;
     }
+    const controller = new AbortController();
+    const currentOperation = saveOperationNumber.current + 1;
+    saveOperationNumber.current = currentOperation;
+    activeSaveController.current = controller;
+    const isCurrent = (): boolean =>
+      isMounted.current && saveOperationNumber.current === currentOperation && !controller.signal.aborted;
     saving.current = true;
     setIsSaving(true);
     try {
-      if (template) {
-        await repository.update(template.id, draft);
-      } else {
-        await repository.create(draft);
+      let draftToSave = draft;
+      if (draft.output.kind === "mochi-template" && draft.output.target.status === "configured") {
+        const liveSnapshot = toMochiTemplateSnapshot(
+          await new MochiClient(mochiApiKey).getTemplate(draft.output.target.template.id, controller.signal)
+        );
+        if (!isCurrent()) {
+          return;
+        }
+        const drift = detectTemplateDrift(draft.output.target.template, liveSnapshot, draft.output.target.bindings);
+        setSelectedSnapshotOverride(liveSnapshot);
+        if (drift.length > 0) {
+          setShowValidation(true);
+          await showToast({
+            style: Toast.Style.Failure,
+            title: "Mochi Template Changed",
+            message: `${drift[0].message}. Review the field mappings before saving.`,
+          });
+          return;
+        }
+        draftToSave = {
+          ...draft,
+          output: {
+            kind: "mochi-template",
+            target: { ...draft.output.target, template: liveSnapshot },
+          },
+        };
       }
-      await onSaved();
+      const refreshedErrors = validateTemplate(draftToSave);
+      if (refreshedErrors.length > 0) {
+        setShowValidation(true);
+        await showToast({
+          style: Toast.Style.Failure,
+          title: "Fix the template before saving",
+          message: refreshedErrors[0].message,
+        });
+        return;
+      }
+      const draftError = validateDraft?.(draftToSave);
+      if (draftError) {
+        await showToast({ style: Toast.Style.Failure, title: "Template Is Not Compatible", message: draftError });
+        return;
+      }
+      if (!isCurrent()) {
+        return;
+      }
+      const saved = template ? await repository.update(template.id, draftToSave) : await repository.create(draftToSave);
+      if (!isCurrent()) {
+        return;
+      }
+      await onSaved(saved);
+      if (!isCurrent()) {
+        return;
+      }
       await showToast({ style: Toast.Style.Success, title: template ? "Template updated" : "Template created" });
-      pop();
+      if (isCurrent() && closeAfterSave) {
+        pop();
+      }
     } catch (error: unknown) {
-      await showToast({ style: Toast.Style.Failure, title: "Could not save template", message: errorMessage(error) });
+      if (isCurrent()) {
+        await showToast({ style: Toast.Style.Failure, title: "Could not save template", message: errorMessage(error) });
+      }
     } finally {
-      saving.current = false;
-      setIsSaving(false);
+      if (activeSaveController.current === controller) {
+        activeSaveController.current = undefined;
+      }
+      if (isMounted.current && saveOperationNumber.current === currentOperation) {
+        saving.current = false;
+        setIsSaving(false);
+      }
     }
   }
 
   async function changeMochiTemplate(nextId: string): Promise<void> {
+    activeTemplateLoadController.current?.abort(new Error("Mochi template selection changed"));
+    const currentOperation = templateLoadOperationNumber.current + 1;
+    templateLoadOperationNumber.current = currentOperation;
+    activeTemplateLoadController.current = undefined;
     if (nextId === mochiTemplateId && selectedSnapshot) {
+      setIsLoadingTemplate(false);
       return;
     }
-    if (bindings.length > 0 && mochiTemplateId !== NO_TEMPLATE_VALUE) {
-      const confirmed = await confirmAlert({
-        icon: Icon.Warning,
-        title: "Replace Mochi field mappings?",
-        message: "Existing field mappings will be removed.",
-        primaryAction: { title: "Replace", style: Alert.ActionStyle.Destructive },
-      });
-      if (!confirmed) {
-        return;
-      }
-    }
-    if (nextId === NO_TEMPLATE_VALUE) {
-      setMochiTemplateId(nextId);
-      setSelectedSnapshotOverride(undefined);
-      setBindings([]);
-      return;
-    }
+    const controller = new AbortController();
+    activeTemplateLoadController.current = controller;
+    const isCurrent = (): boolean =>
+      isMounted.current && templateLoadOperationNumber.current === currentOperation && !controller.signal.aborted;
     setIsLoadingTemplate(true);
     try {
-      const snapshot = toMochiTemplateSnapshot(await new MochiClient(mochiApiKey).getTemplate(nextId));
+      if (bindings.length > 0 && mochiTemplateId !== NO_TEMPLATE_VALUE) {
+        const confirmed = await confirmAlert({
+          icon: Icon.Warning,
+          title: "Replace Mochi field mappings?",
+          message: "Existing field mappings will be removed.",
+          primaryAction: { title: "Replace", style: Alert.ActionStyle.Destructive },
+        });
+        if (!isCurrent() || !confirmed) {
+          return;
+        }
+      }
+      if (nextId === NO_TEMPLATE_VALUE) {
+        setMochiTemplateId(nextId);
+        setSelectedSnapshotOverride(undefined);
+        setBindings([]);
+        return;
+      }
+      const snapshot = toMochiTemplateSnapshot(
+        await new MochiClient(mochiApiKey).getTemplate(nextId, controller.signal)
+      );
+      if (!isCurrent()) {
+        return;
+      }
       setMochiTemplateId(nextId);
       setSelectedSnapshotOverride(snapshot);
       setBindings(createAutomaticBindings(fields, snapshot));
     } catch (error: unknown) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: "Could not load Mochi template",
-        message: errorMessage(error),
-      });
+      if (isCurrent()) {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: "Could not load Mochi template",
+          message: errorMessage(error),
+        });
+      }
     } finally {
-      setIsLoadingTemplate(false);
+      if (activeTemplateLoadController.current === controller) {
+        activeTemplateLoadController.current = undefined;
+      }
+      if (isMounted.current && templateLoadOperationNumber.current === currentOperation) {
+        setIsLoadingTemplate(false);
+      }
     }
   }
 
@@ -197,7 +333,7 @@ export function TemplateForm({ repository, template, onSaved }: TemplateFormProp
     }
     try {
       await repository.delete(template.id);
-      await onSaved();
+      await onDeleted?.();
       await showToast({ style: Toast.Style.Success, title: "Template deleted" });
       pop();
     } catch (error: unknown) {
@@ -252,12 +388,12 @@ export function TemplateForm({ repository, template, onSaved }: TemplateFormProp
 
   return (
     <Form
-      isLoading={isSaving || isLoadingTemplate}
+      isLoading={isSaving || isLoadingTemplate || isLoadingCatalog}
       navigationTitle={template ? `Edit ${template.name}` : "Create Template"}
       actions={
         <ActionPanel>
           <Action.SubmitForm
-            title={template ? "Save Changes" : "Create Template"}
+            title={submitTitle ?? (template ? "Save Changes" : "Create Template")}
             icon={Icon.SaveDocument}
             onSubmit={save}
           />
@@ -322,7 +458,7 @@ export function TemplateForm({ repository, template, onSaved }: TemplateFormProp
               ))}
             </ActionPanel.Submenu>
           ) : null}
-          {template ? (
+          {template && allowDelete ? (
             <ActionPanel.Section title="Danger Zone">
               <Action
                 title="Delete Template"
@@ -344,6 +480,9 @@ export function TemplateForm({ repository, template, onSaved }: TemplateFormProp
         error={fieldError(validationErrors, "name")}
         onChange={setName}
       />
+      {warnings.map((warning, index) => (
+        <Form.Description key={`${warning}-${index}`} title="Warning" text={warning} />
+      ))}
       <Form.Dropdown
         id="deckId"
         title="Mochi Deck"
@@ -353,7 +492,7 @@ export function TemplateForm({ repository, template, onSaved }: TemplateFormProp
         onChange={setDeckId}
       >
         {deckId && !selectedDeck ? (
-          <Form.Dropdown.Item title={template?.deckName || "Unavailable deck"} value={deckId} icon={Icon.Book} />
+          <Form.Dropdown.Item title={initial?.deckName || "Unavailable deck"} value={deckId} icon={Icon.Book} />
         ) : null}
         {decks.map((deck) => (
           <Form.Dropdown.Item key={deck.id} title={deck.name} value={deck.id} icon={Icon.Book} />
@@ -560,6 +699,9 @@ function MappingControls({
         ? CUSTOM_VALUE
         : UNMAPPED_VALUE;
   const compatibleFields = fields.filter((field) => isDirectBindingCompatible(field, target));
+  const boundSource =
+    binding?.kind === "input" ? fields.find((field) => field.id === binding.sourceFieldId) : undefined;
+  const hasIncompatibleBinding = boundSource !== undefined && !isDirectBindingCompatible(boundSource, target);
   return (
     <>
       <Form.Dropdown
@@ -573,6 +715,13 @@ function MappingControls({
         {binding?.kind === "input" && !fields.some((field) => field.id === binding.sourceFieldId) ? (
           <Form.Dropdown.Item
             title="Missing input field"
+            value={`input:${binding.sourceFieldId}`}
+            icon={Icon.Warning}
+          />
+        ) : null}
+        {binding?.kind === "input" && hasIncompatibleBinding ? (
+          <Form.Dropdown.Item
+            title={`${boundSource.name} (incompatible type)`}
             value={`input:${binding.sourceFieldId}`}
             icon={Icon.Warning}
           />

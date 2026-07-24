@@ -99,6 +99,11 @@ export type CreateMochiCardRequest = {
       };
 };
 
+export type UpdateMochiCardRequest = {
+  readonly templateId: string;
+  readonly fields: Readonly<Record<string, FieldValue>>;
+};
+
 type MochiCardPage = {
   readonly cards: readonly MochiCard[];
   readonly bookmark?: string;
@@ -155,6 +160,24 @@ export class MochiClient {
     );
 
     return parseCreatedCard(responseText);
+  }
+
+  async updateCard(cardId: string, request: UpdateMochiCardRequest, signal?: AbortSignal): Promise<void> {
+    await this.request(
+      `${MOCHI_CARDS_URL}${encodeURIComponent(cardId)}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          content: "",
+          "template-id": request.templateId,
+          fields: Object.fromEntries(Object.entries(request.fields).map(([id, value]) => [id, { id, value }])),
+        }),
+      },
+      signal
+    );
   }
 
   async deleteCard(cardId: string, signal?: AbortSignal): Promise<void> {

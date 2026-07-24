@@ -18,6 +18,8 @@ import { useCachedPromise, usePromise } from "@raycast/utils";
 import { useEffect, useRef, useState } from "react";
 
 import { CARD_SORT_OPTIONS, cardTitle, isCardSort, isSortDescending, sortCards, type CardSort } from "./card-sorting";
+import { EditCardFlow } from "./components/edit-card-flow";
+import { resolveGenerationTemplate } from "./domain/edit-card";
 import GenerateCard from "./generate-card";
 import { cardMarkdown } from "./mochi-card-content";
 import {
@@ -26,15 +28,20 @@ import {
   MochiError,
   type MochiCard,
   type MochiDeck,
+  type MochiTemplate,
 } from "./services/mochi-client";
 import { DeckSelectionRepository } from "./storage/deck-selection-repository";
+import { CardGenerationContextRepository } from "./storage/card-generation-context-repository";
 import {
   MochiCatalogRepository,
   type MochiCatalog,
   type MochiCatalogTemplate,
 } from "./storage/mochi-catalog-repository";
+import { TemplateRepository } from "./storage/template-repository";
 
 const deckSelectionRepository = new DeckSelectionRepository();
+const cardGenerationContextRepository = new CardGenerationContextRepository();
+const generationTemplateRepository = new TemplateRepository();
 const mochiCatalogRepository = new MochiCatalogRepository();
 const dateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
 const dateTimeFormatter = createDateTimeFormatter();
@@ -140,6 +147,21 @@ export default function BrowseCards() {
   const templates = browseData?.templates ?? [];
   const selectedDeckIdSet = new Set(selectedDeckIds);
   const visibleDecks = decks.filter((deck) => selectedDeckIdSet.has(deck.id));
+
+  function rememberMochiTemplate(template: MochiTemplate): void {
+    const currentCatalog = mochiCatalogRepository.get();
+    if (!currentCatalog) {
+      return;
+    }
+    mochiCatalogRepository.replace({
+      ...currentCatalog,
+      templates: [...currentCatalog.templates.filter((candidate) => candidate.id !== template.id), template].sort(
+        (left, right) => left.name.localeCompare(right.name)
+      ),
+    });
+    setCatalogRevision((revision) => revision + 1);
+  }
+
   const configureAction = (
     <Action.Push
       title="Configure Visible Decks"
@@ -210,7 +232,13 @@ export default function BrowseCards() {
                   title="Browse Cards"
                   icon={Icon.ArrowRight}
                   target={
-                    <CardList client={client} deck={deck} templates={templates} onDeckNotFound={invalidateCatalog} />
+                    <CardList
+                      client={client}
+                      deck={deck}
+                      templates={templates}
+                      onDeckNotFound={invalidateCatalog}
+                      onMochiTemplateUpdated={rememberMochiTemplate}
+                    />
                   }
                 />
                 {configureAction}
@@ -293,9 +321,10 @@ type CardListProps = {
   readonly deck: MochiDeck;
   readonly templates: readonly MochiCatalogTemplate[];
   readonly onDeckNotFound: () => void;
+  readonly onMochiTemplateUpdated: (template: MochiTemplate) => void;
 };
 
-function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
+function CardList({ client, deck, templates, onDeckNotFound, onMochiTemplateUpdated }: CardListProps) {
   const { pop } = useNavigation();
   const abortable = useRef<AbortController | undefined>(undefined);
   const [sort, setSort] = useState<CardSort>("position");
@@ -303,6 +332,7 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
   const [filter, setFilter] = useState<CardFilter>("all");
   const [isShowingMetadata, setIsShowingMetadata] = useState(true);
   const [isDeletingCard, setIsDeletingCard] = useState(false);
+  const [templateOverrides, setTemplateOverrides] = useState<Readonly<Record<string, MochiTemplate>>>({});
   const isDeletingCardRef = useRef(false);
   const hasCardsRef = useRef(false);
   const {
@@ -328,10 +358,21 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
   hasCardsRef.current = cards.length > 0;
   const isDeckNotFound = isMochiDeckNotFoundError(error);
   const visibleError = isDeckNotFound || cards.length === 0 ? error : undefined;
-  const templatesById = new Map(templates.map((template) => [template.id, template]));
+  const availableTemplates = [
+    ...templates.map((template) => templateOverrides[template.id] ?? template),
+    ...Object.values(templateOverrides).filter(
+      (template) => !templates.some((candidate) => candidate.id === template.id)
+    ),
+  ];
+  const templatesById = new Map(availableTemplates.map((template) => [template.id, template]));
   const sortedCards = sortCards(cards, sort, isSortReversed);
   const visibleCards = sortedCards.filter((card) => matchesFilter(card, filter));
   const isCurrentSortDescending = isSortDescending(sort, isSortReversed);
+
+  function rememberUpdatedTemplate(template: MochiTemplate): void {
+    setTemplateOverrides((current) => ({ ...current, [template.id]: template }));
+    onMochiTemplateUpdated(template);
+  }
 
   function selectViewOption(value: string): void {
     if (isCardFilter(value)) {
@@ -369,17 +410,47 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
     isDeletingCardRef.current = true;
     setIsDeletingCard(true);
     try {
-      await client.deleteCard(card.id);
-      await revalidate();
-      await showToast({ style: Toast.Style.Success, title: "Card Deleted" });
+      try {
+        await client.deleteCard(card.id);
+      } catch (error: unknown) {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: "Could Not Delete Card",
+          message: mochiErrorMessage(error),
+        });
+        return false;
+      }
+
+      let contextDeleteError: unknown;
+      try {
+        await cardGenerationContextRepository.delete(card.id);
+      } catch (error: unknown) {
+        contextDeleteError = error;
+      }
+
+      let refreshError: unknown;
+      try {
+        await revalidate();
+      } catch (error: unknown) {
+        refreshError = error;
+      }
+
+      const partialFailureMessage = [
+        contextDeleteError ? `Edit context: ${errorMessage(contextDeleteError)}` : undefined,
+        refreshError ? `Card list refresh: ${errorMessage(refreshError)}` : undefined,
+      ]
+        .filter((message): message is string => message !== undefined)
+        .join(" · ");
+      await showToast(
+        partialFailureMessage
+          ? {
+              style: Toast.Style.Failure,
+              title: "Card Deleted, but Follow-Up Was Incomplete",
+              message: partialFailureMessage,
+            }
+          : { style: Toast.Style.Success, title: "Card Deleted" }
+      );
       return true;
-    } catch (error: unknown) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: "Could Not Delete Card",
-        message: mochiErrorMessage(error),
-      });
-      return false;
     } finally {
       isDeletingCardRef.current = false;
       setIsDeletingCard(false);
@@ -497,9 +568,30 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
                     icon={Icon.Document}
                     shortcut={Keyboard.Shortcut.Common.Open}
                     target={
-                      <CardView card={card} client={client} template={template} onDelete={() => deleteCard(card)} />
+                      <CardView
+                        card={card}
+                        client={client}
+                        deck={deck}
+                        templates={availableTemplates}
+                        onDelete={() => deleteCard(card)}
+                        onCardUpdated={async (_updatedCard, updatedTemplate) => {
+                          rememberUpdatedTemplate(updatedTemplate);
+                          await revalidate();
+                        }}
+                      />
                     }
                   />
+                  {card.templateId ? (
+                    <EditCardAction
+                      card={card}
+                      client={client}
+                      deck={deck}
+                      onCardUpdated={async (_updatedCard, updatedTemplate) => {
+                        rememberUpdatedTemplate(updatedTemplate);
+                        await revalidate();
+                      }}
+                    />
+                  ) : null}
                   <Action.Push
                     title="Create Card"
                     icon={Icon.Plus}
@@ -552,29 +644,57 @@ function CardList({ client, deck, templates, onDeckNotFound }: CardListProps) {
 function CardView({
   card,
   client,
-  template,
+  deck,
+  templates,
   onDelete,
+  onCardUpdated,
 }: {
   readonly card: MochiCard;
   readonly client: MochiClient;
-  readonly template?: MochiCatalogTemplate;
+  readonly deck: MochiDeck;
+  readonly templates: readonly MochiCatalogTemplate[];
   readonly onDelete: () => Promise<boolean>;
+  readonly onCardUpdated: (card: MochiCard, template: MochiTemplate) => Promise<void> | void;
 }) {
   const { pop } = useNavigation();
   const reloadAbortable = useRef<AbortController | undefined>(undefined);
+  const deleteInProgress = useRef(false);
+  const isMounted = useRef(true);
+  const deleteOperationNumber = useRef(0);
   const [currentCard, setCurrentCard] = useState(card);
+  const [templateOverride, setTemplateOverride] = useState<MochiTemplate | undefined>(undefined);
   const [isReloading, setIsReloading] = useState(false);
+  const template = currentCard.templateId
+    ? templateOverride?.id === currentCard.templateId
+      ? templateOverride
+      : templates.find((candidate) => candidate.id === currentCard.templateId)
+    : undefined;
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+      deleteOperationNumber.current += 1;
       reloadAbortable.current?.abort(new Error("Card view closed"));
-    },
-    []
-  );
+    };
+  }, []);
 
   async function deleteCard(): Promise<void> {
-    if (await onDelete()) {
-      pop();
+    if (deleteInProgress.current) {
+      return;
+    }
+    deleteInProgress.current = true;
+    const currentOperation = deleteOperationNumber.current + 1;
+    deleteOperationNumber.current = currentOperation;
+    try {
+      const deleted = await onDelete();
+      if (deleted && isMounted.current && deleteOperationNumber.current === currentOperation) {
+        pop();
+      }
+    } finally {
+      if (deleteOperationNumber.current === currentOperation) {
+        deleteInProgress.current = false;
+      }
     }
   }
 
@@ -615,6 +735,18 @@ function CardView({
       markdown={cardMarkdown(currentCard, template)}
       actions={
         <ActionPanel>
+          {currentCard.templateId ? (
+            <EditCardAction
+              card={currentCard}
+              client={client}
+              deck={deck}
+              onCardUpdated={async (updatedCard, updatedTemplate) => {
+                setCurrentCard(updatedCard);
+                setTemplateOverride(updatedTemplate);
+                await onCardUpdated(updatedCard, updatedTemplate);
+              }}
+            />
+          ) : null}
           <Action.CopyToClipboard
             title="Copy as Markdown"
             content={cardMarkdown(currentCard, template)}
@@ -639,6 +771,94 @@ function CardView({
       }
     />
   );
+}
+
+function EditCardAction({
+  card,
+  client,
+  deck,
+  onCardUpdated,
+}: {
+  readonly card: MochiCard;
+  readonly client: MochiClient;
+  readonly deck: MochiDeck;
+  readonly onCardUpdated: (card: MochiCard, template: MochiTemplate) => Promise<void> | void;
+}) {
+  const { push } = useNavigation();
+  const isOpening = useRef(false);
+  const openAbortable = useRef<AbortController | undefined>(undefined);
+  const isMounted = useRef(true);
+  const operationNumber = useRef(0);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+      operationNumber.current += 1;
+      openAbortable.current?.abort(new Error("Card view closed"));
+    };
+  }, []);
+
+  async function openEditor(): Promise<void> {
+    if (isOpening.current) {
+      return;
+    }
+    isOpening.current = true;
+    const currentOperation = operationNumber.current + 1;
+    operationNumber.current = currentOperation;
+    const controller = new AbortController();
+    openAbortable.current = controller;
+    const isCurrent = (): boolean =>
+      isMounted.current && operationNumber.current === currentOperation && !controller.signal.aborted;
+    try {
+      const freshCard = await client.getCard(card.id, controller.signal);
+      if (!isCurrent()) {
+        return;
+      }
+      if (freshCard.deckId !== deck.id) {
+        throw new Error("Card moved to another Mochi deck. Reopen it from the new deck before editing.");
+      }
+      if (!freshCard.templateId) {
+        throw new Error("Card no longer uses a Mochi template. Reopen it before editing.");
+      }
+      const generationTemplates = await generationTemplateRepository.list();
+      if (!isCurrent()) {
+        return;
+      }
+      const resolution = resolveGenerationTemplate(generationTemplates, deck.id, freshCard.templateId);
+      if (resolution.kind === "create") {
+        const shouldCreate = await confirmAlert({
+          icon: Icon.Warning,
+          title: "No Generation Template",
+          message: "This card has no compatible Generation Template. Create one to edit the card?",
+          primaryAction: { title: "Create Generation Template" },
+        });
+        if (!isCurrent() || !shouldCreate) {
+          return;
+        }
+      }
+      if (isCurrent()) {
+        push(<EditCardFlow card={freshCard} client={client} deck={deck} onCardUpdated={onCardUpdated} />);
+      }
+    } catch (error: unknown) {
+      if (isCurrent()) {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: "Could Not Start Card Edit",
+          message: errorMessage(error),
+        });
+      }
+    } finally {
+      if (openAbortable.current === controller) {
+        openAbortable.current = undefined;
+      }
+      if (operationNumber.current === currentOperation) {
+        isOpening.current = false;
+      }
+    }
+  }
+
+  return <Action title="Edit Card" icon={Icon.Pencil} shortcut={Keyboard.Shortcut.Common.Edit} onAction={openEditor} />;
 }
 
 function isCardFilter(value: string): value is CardFilter {

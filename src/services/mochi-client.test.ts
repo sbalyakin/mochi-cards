@@ -76,6 +76,32 @@ describe("MochiClient", () => {
     expect(init?.body).toBeUndefined();
   });
 
+  it("updates only Mochi template content and fields", async () => {
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(new Response("", { status: 200 }));
+    const client = new MochiClient("secret-key", fetch);
+
+    await client.updateCard("card/1", {
+      templateId: "template-2",
+      fields: { front: "Hello", active: true },
+    });
+
+    const [url, init] = fetch.mock.calls[0];
+    expect(url).toBe("https://app.mochi.cards/api/cards/card%2F1");
+    expect(init?.method).toBe("POST");
+    expect(init?.headers).toMatchObject({
+      Authorization: `Basic ${Buffer.from("secret-key:").toString("base64")}`,
+      "Content-Type": "application/json",
+    });
+    expect(JSON.parse(String(init?.body))).toEqual({
+      content: "",
+      "template-id": "template-2",
+      fields: {
+        front: { id: "front", value: "Hello" },
+        active: { id: "active", value: true },
+      },
+    });
+  });
+
   it("loads a card", async () => {
     const fetch = vi.fn<FetchLike>().mockResolvedValue(
       new Response(
