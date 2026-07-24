@@ -1,7 +1,7 @@
 import { Cache } from "@raycast/api";
 
 const STORAGE_KEY = "catalog";
-const STORAGE_VERSION = 3;
+const STORAGE_VERSION = 4;
 
 export type MochiCatalogItem = {
   readonly id: string;
@@ -24,10 +24,15 @@ export type MochiCatalogTemplateField = {
 export type MochiCatalog = {
   readonly decks: readonly MochiCatalogItem[];
   readonly templates: readonly MochiCatalogTemplate[];
+  readonly cardCounts: Readonly<Record<string, number>>;
 };
 
 type MochiCatalogEnvelope = MochiCatalog & {
   readonly version: typeof STORAGE_VERSION;
+};
+
+type MochiCatalogV3Envelope = Omit<MochiCatalog, "cardCounts"> & {
+  readonly version: 3;
 };
 
 export interface MochiCatalogStorage {
@@ -58,13 +63,18 @@ export class MochiCatalogRepository {
 
     try {
       const parsed: unknown = JSON.parse(storedValue);
+      if (isMochiCatalogV3Envelope(parsed)) {
+        const catalog: MochiCatalog = { decks: parsed.decks, templates: parsed.templates, cardCounts: {} };
+        this.replace(catalog);
+        return catalog;
+      }
       if (isPreviousMochiCatalogEnvelope(parsed)) {
         return undefined;
       }
       if (!isMochiCatalogEnvelope(parsed)) {
         throw new Error("Stored Mochi catalog does not match a supported version");
       }
-      return { decks: parsed.decks, templates: parsed.templates };
+      return { decks: parsed.decks, templates: parsed.templates, cardCounts: parsed.cardCounts };
     } catch (error: unknown) {
       throw new MochiCatalogRepositoryError("Saved Mochi catalog is corrupted. The original data was left unchanged.", {
         cause: error,
@@ -77,6 +87,7 @@ export class MochiCatalogRepository {
       version: STORAGE_VERSION,
       decks: catalog.decks,
       templates: catalog.templates,
+      cardCounts: catalog.cardCounts,
     };
     this.storage.setItem(STORAGE_KEY, JSON.stringify(envelope));
   }
@@ -107,12 +118,24 @@ function isMochiCatalogEnvelope(value: unknown): value is MochiCatalogEnvelope {
     Array.isArray(value.decks) &&
     value.decks.every(isMochiCatalogItem) &&
     Array.isArray(value.templates) &&
-    value.templates.every(isMochiCatalogTemplate)
+    value.templates.every(isMochiCatalogTemplate) &&
+    isCardCounts(value.cardCounts)
   );
 }
 
 function isPreviousMochiCatalogEnvelope(value: unknown): boolean {
   return isRecord(value) && (value.version === 1 || value.version === 2);
+}
+
+function isMochiCatalogV3Envelope(value: unknown): value is MochiCatalogV3Envelope {
+  return (
+    isRecord(value) &&
+    value.version === 3 &&
+    Array.isArray(value.decks) &&
+    value.decks.every(isMochiCatalogItem) &&
+    Array.isArray(value.templates) &&
+    value.templates.every(isMochiCatalogTemplate)
+  );
 }
 
 function isMochiCatalogItem(value: unknown): value is MochiCatalogItem {
@@ -138,6 +161,15 @@ function isMochiCatalogTemplateField(value: unknown): value is MochiCatalogTempl
     typeof value.type === "string" &&
     (value.pos === undefined || typeof value.pos === "string") &&
     typeof value.multiline === "boolean"
+  );
+}
+
+function isCardCounts(value: unknown): value is Readonly<Record<string, number>> {
+  return (
+    isRecord(value) &&
+    Object.values(value).every(
+      (count: unknown) => typeof count === "number" && Number.isSafeInteger(count) && count >= 0
+    )
   );
 }
 

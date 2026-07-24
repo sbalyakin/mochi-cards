@@ -43,11 +43,13 @@ describe("MochiCatalogRepository", () => {
     repository.replace({
       decks: [{ id: "deck-1", name: "Words" }],
       templates: [{ id: "template-1", name: "Vocabulary", fields: [] }],
+      cardCounts: { "deck-1": 3 },
     });
 
     expect(repository.get()).toEqual({
       decks: [{ id: "deck-1", name: "Words" }],
       templates: [{ id: "template-1", name: "Vocabulary", fields: [] }],
+      cardCounts: { "deck-1": 3 },
     });
   });
 
@@ -56,7 +58,7 @@ describe("MochiCatalogRepository", () => {
   });
 
   it("clears the cached catalog", () => {
-    repository.replace({ decks: [{ id: "deck-1", name: "Words" }], templates: [] });
+    repository.replace({ decks: [{ id: "deck-1", name: "Words" }], templates: [], cardCounts: {} });
 
     repository.clear();
 
@@ -64,16 +66,29 @@ describe("MochiCatalogRepository", () => {
   });
 
   it("keeps corrupted storage unchanged", () => {
-    storage.value = JSON.stringify({ version: 3, decks: "invalid", templates: [] });
+    storage.value = JSON.stringify({ version: 4, decks: "invalid", templates: [], cardCounts: {} });
     const original = storage.value;
 
     expect(() => repository.get()).toThrow(MochiCatalogRepositoryError);
     expect(storage.value).toBe(original);
   });
 
-  it("invalidates the previous catalog version", () => {
+  it("migrates the previous catalog version", () => {
+    storage.value = JSON.stringify({ version: 3, decks: [], templates: [] });
+
+    expect(repository.get()).toEqual({ decks: [], templates: [], cardCounts: {} });
+    expect(storage.value).toBe(JSON.stringify({ version: 4, decks: [], templates: [], cardCounts: {} }));
+  });
+
+  it("invalidates unsupported catalog versions", () => {
     storage.value = JSON.stringify({ version: 2, decks: [], templates: [] });
 
     expect(repository.get()).toBeUndefined();
+  });
+
+  it("rejects invalid cached card counts", () => {
+    storage.value = JSON.stringify({ version: 4, decks: [], templates: [], cardCounts: { "deck-1": -1 } });
+
+    expect(() => repository.get()).toThrow(MochiCatalogRepositoryError);
   });
 });

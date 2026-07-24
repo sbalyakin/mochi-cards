@@ -162,6 +162,18 @@ export default function BrowseCards() {
     setCatalogRevision((revision) => revision + 1);
   }
 
+  function rememberCardCount(deckId: string, count: number): void {
+    const currentCatalog = mochiCatalogRepository.get();
+    if (!currentCatalog || currentCatalog.cardCounts[deckId] === count) {
+      return;
+    }
+    mochiCatalogRepository.replace({
+      ...currentCatalog,
+      cardCounts: { ...currentCatalog.cardCounts, [deckId]: count },
+    });
+    setCatalogRevision((revision) => revision + 1);
+  }
+
   const configureAction = (
     <Action.Push
       title="Configure Visible Decks"
@@ -226,6 +238,11 @@ export default function BrowseCards() {
             key={deck.id}
             icon={Icon.Book}
             title={deck.name}
+            accessories={
+              browseData?.cardCounts[deck.id] === undefined
+                ? undefined
+                : [{ text: cardCountLabel(browseData.cardCounts[deck.id]) }]
+            }
             actions={
               <ActionPanel>
                 <Action.Push
@@ -238,6 +255,7 @@ export default function BrowseCards() {
                       templates={templates}
                       onDeckNotFound={invalidateCatalog}
                       onMochiTemplateUpdated={rememberMochiTemplate}
+                      onCardCountUpdated={rememberCardCount}
                     />
                   }
                 />
@@ -322,9 +340,17 @@ type CardListProps = {
   readonly templates: readonly MochiCatalogTemplate[];
   readonly onDeckNotFound: () => void;
   readonly onMochiTemplateUpdated: (template: MochiTemplate) => void;
+  readonly onCardCountUpdated: (deckId: string, count: number) => void;
 };
 
-function CardList({ client, deck, templates, onDeckNotFound, onMochiTemplateUpdated }: CardListProps) {
+function CardList({
+  client,
+  deck,
+  templates,
+  onDeckNotFound,
+  onMochiTemplateUpdated,
+  onCardCountUpdated,
+}: CardListProps) {
   const { pop } = useNavigation();
   const abortable = useRef<AbortController | undefined>(undefined);
   const [sort, setSort] = useState<CardSort>("position");
@@ -355,6 +381,11 @@ function CardList({ client, deck, templates, onDeckNotFound, onMochiTemplateUpda
       }
     },
   });
+  useEffect(() => {
+    if (!isLoading) {
+      onCardCountUpdated(deck.id, cards.length);
+    }
+  }, [cards, deck.id, isLoading, onCardCountUpdated]);
   hasCardsRef.current = cards.length > 0;
   const isDeckNotFound = isMochiDeckNotFoundError(error);
   const visibleError = isDeckNotFound || cards.length === 0 ? error : undefined;
@@ -1001,7 +1032,14 @@ function errorMessage(error: unknown): string {
 async function fetchAndCacheMochiCatalog(client: MochiClient, signal?: AbortSignal): Promise<MochiCatalog> {
   const decks = await client.listDecks(signal);
   const templates = await client.listTemplates(signal);
-  const catalog: MochiCatalog = { decks, templates };
+  const previousCardCounts = mochiCatalogRepository.get()?.cardCounts ?? {};
+  const deckIds = new Set(decks.map((deck) => deck.id));
+  const cardCounts = Object.fromEntries(Object.entries(previousCardCounts).filter(([deckId]) => deckIds.has(deckId)));
+  const catalog: MochiCatalog = { decks, templates, cardCounts };
   mochiCatalogRepository.replace(catalog);
   return catalog;
+}
+
+function cardCountLabel(count: number): string {
+  return `${count} card${count === 1 ? "" : "s"}`;
 }
