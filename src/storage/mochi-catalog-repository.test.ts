@@ -41,13 +41,13 @@ describe("MochiCatalogRepository", () => {
 
   it("stores decks and templates", () => {
     repository.replace({
-      decks: [{ id: "deck-1", name: "Words" }],
+      decks: [{ id: "deck-1", name: "Words", parentId: "deck-parent" }],
       templates: [{ id: "template-1", name: "Vocabulary", fields: [] }],
       cardCounts: { "deck-1": 3 },
     });
 
     expect(repository.get()).toEqual({
-      decks: [{ id: "deck-1", name: "Words" }],
+      decks: [{ id: "deck-1", name: "Words", parentId: "deck-parent" }],
       templates: [{ id: "template-1", name: "Vocabulary", fields: [] }],
       cardCounts: { "deck-1": 3 },
     });
@@ -58,7 +58,11 @@ describe("MochiCatalogRepository", () => {
   });
 
   it("clears the cached catalog", () => {
-    repository.replace({ decks: [{ id: "deck-1", name: "Words" }], templates: [], cardCounts: {} });
+    repository.replace({
+      decks: [{ id: "deck-1", name: "Words", parentId: "deck-parent" }],
+      templates: [],
+      cardCounts: {},
+    });
 
     repository.clear();
 
@@ -66,18 +70,17 @@ describe("MochiCatalogRepository", () => {
   });
 
   it("keeps corrupted storage unchanged", () => {
-    storage.value = JSON.stringify({ version: 4, decks: "invalid", templates: [], cardCounts: {} });
+    storage.value = JSON.stringify({ version: 5, decks: "invalid", templates: [], cardCounts: {} });
     const original = storage.value;
 
     expect(() => repository.get()).toThrow(MochiCatalogRepositoryError);
     expect(storage.value).toBe(original);
   });
 
-  it("migrates the previous catalog version", () => {
-    storage.value = JSON.stringify({ version: 3, decks: [], templates: [] });
+  it("invalidates catalog versions without parent deck IDs", () => {
+    storage.value = JSON.stringify({ version: 4, decks: [], templates: [], cardCounts: {} });
 
-    expect(repository.get()).toEqual({ decks: [], templates: [], cardCounts: {} });
-    expect(storage.value).toBe(JSON.stringify({ version: 4, decks: [], templates: [], cardCounts: {} }));
+    expect(repository.get()).toBeUndefined();
   });
 
   it("invalidates unsupported catalog versions", () => {
@@ -87,7 +90,7 @@ describe("MochiCatalogRepository", () => {
   });
 
   it("rejects invalid cached card counts", () => {
-    storage.value = JSON.stringify({ version: 4, decks: [], templates: [], cardCounts: { "deck-1": -1 } });
+    storage.value = JSON.stringify({ version: 5, decks: [], templates: [], cardCounts: { "deck-1": -1 } });
 
     expect(() => repository.get()).toThrow(MochiCatalogRepositoryError);
   });

@@ -1,11 +1,12 @@
 import { Cache } from "@raycast/api";
 
 const STORAGE_KEY = "catalog";
-const STORAGE_VERSION = 4;
+const STORAGE_VERSION = 5;
 
 export type MochiCatalogItem = {
   readonly id: string;
   readonly name: string;
+  readonly parentId?: string;
 };
 
 export type MochiCatalogTemplate = MochiCatalogItem & {
@@ -29,10 +30,6 @@ export type MochiCatalog = {
 
 type MochiCatalogEnvelope = MochiCatalog & {
   readonly version: typeof STORAGE_VERSION;
-};
-
-type MochiCatalogV3Envelope = Omit<MochiCatalog, "cardCounts"> & {
-  readonly version: 3;
 };
 
 export interface MochiCatalogStorage {
@@ -63,11 +60,6 @@ export class MochiCatalogRepository {
 
     try {
       const parsed: unknown = JSON.parse(storedValue);
-      if (isMochiCatalogV3Envelope(parsed)) {
-        const catalog: MochiCatalog = { decks: parsed.decks, templates: parsed.templates, cardCounts: {} };
-        this.replace(catalog);
-        return catalog;
-      }
       if (isPreviousMochiCatalogEnvelope(parsed)) {
         return undefined;
       }
@@ -124,22 +116,16 @@ function isMochiCatalogEnvelope(value: unknown): value is MochiCatalogEnvelope {
 }
 
 function isPreviousMochiCatalogEnvelope(value: unknown): boolean {
-  return isRecord(value) && (value.version === 1 || value.version === 2);
-}
-
-function isMochiCatalogV3Envelope(value: unknown): value is MochiCatalogV3Envelope {
-  return (
-    isRecord(value) &&
-    value.version === 3 &&
-    Array.isArray(value.decks) &&
-    value.decks.every(isMochiCatalogItem) &&
-    Array.isArray(value.templates) &&
-    value.templates.every(isMochiCatalogTemplate)
-  );
+  return isRecord(value) && (value.version === 1 || value.version === 2 || value.version === 3 || value.version === 4);
 }
 
 function isMochiCatalogItem(value: unknown): value is MochiCatalogItem {
-  return isRecord(value) && typeof value.id === "string" && typeof value.name === "string";
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    (value.parentId === undefined || typeof value.parentId === "string")
+  );
 }
 
 function isMochiCatalogTemplate(value: unknown): value is MochiCatalogTemplate {

@@ -39,6 +39,7 @@ export type CreatedMochiCard = {
 export type MochiDeck = {
   readonly id: string;
   readonly name: string;
+  readonly parentId?: string;
 };
 
 export type MochiCardField = {
@@ -379,7 +380,7 @@ function parseDeckPage(responseText: string): MochiDeckPage {
     ) {
       throw new Error("Mochi returned an invalid deck list");
     }
-    return { decks: value.docs.filter(isMochiDeck), bookmark: value.bookmark };
+    return { decks: value.docs.flatMap(parseMochiDeck), bookmark: value.bookmark };
   } catch (error: unknown) {
     if (error instanceof MochiError) {
       throw error;
@@ -500,8 +501,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function isMochiDeck(value: unknown): value is MochiDeck {
-  return isRecord(value) && typeof value.id === "string" && typeof value.name === "string";
+function parseMochiDeck(value: unknown): readonly MochiDeck[] {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    typeof value.name !== "string" ||
+    (value["parent-id"] !== undefined && value["parent-id"] !== null && typeof value["parent-id"] !== "string")
+  ) {
+    return [];
+  }
+
+  const parentId = typeof value["parent-id"] === "string" ? normalizeDeckId(value["parent-id"]) : undefined;
+  return [{ id: value.id, name: value.name, ...(parentId ? { parentId } : {}) }];
 }
 
 function parseMochiCard(value: unknown): MochiCard | undefined {

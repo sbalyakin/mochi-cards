@@ -19,6 +19,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { CARD_SORT_OPTIONS, cardTitle, isCardSort, isSortDescending, sortCards, type CardSort } from "./card-sorting";
 import { EditCardFlow } from "./components/edit-card-flow";
+import { formatDeckHierarchyTitle, hierarchyDecks } from "./deck-hierarchy";
 import { resolveGenerationTemplate } from "./domain/edit-card";
 import GenerateCard from "./generate-card";
 import { cardMarkdown } from "./mochi-card-content";
@@ -174,11 +175,35 @@ export default function BrowseCards() {
     setCatalogRevision((revision) => revision + 1);
   }
 
+  function rememberMochiDecks(updatedDecks: readonly MochiDeck[]): void {
+    const currentCatalog = mochiCatalogRepository.get();
+    if (!currentCatalog) {
+      return;
+    }
+    const deckIds = new Set(updatedDecks.map((deck) => deck.id));
+    mochiCatalogRepository.replace({
+      ...currentCatalog,
+      decks: updatedDecks,
+      cardCounts: Object.fromEntries(
+        Object.entries(currentCatalog.cardCounts).filter(([deckId]) => deckIds.has(deckId))
+      ),
+    });
+    setCatalogRevision((revision) => revision + 1);
+  }
+
   const configureAction = (
     <Action.Push
       title="Configure Visible Decks"
       icon={Icon.Cog}
-      target={<ConfigureDecks decks={decks} initialDeckIds={selectedDeckIds} onSelectionChange={revalidateSelection} />}
+      target={
+        <ConfigureDecks
+          client={client}
+          decks={decks}
+          initialDeckIds={selectedDeckIds}
+          onDecksReloaded={rememberMochiDecks}
+          onSelectionChange={revalidateSelection}
+        />
+      }
     />
   );
 
@@ -271,14 +296,33 @@ export default function BrowseCards() {
 }
 
 type ConfigureDecksProps = {
+  readonly client: MochiClient;
   readonly decks: readonly MochiDeck[];
   readonly initialDeckIds: readonly string[];
+  readonly onDecksReloaded: (decks: readonly MochiDeck[]) => void;
   readonly onSelectionChange: () => Promise<readonly string[]>;
 };
 
-function ConfigureDecks({ decks, initialDeckIds, onSelectionChange }: ConfigureDecksProps) {
+function ConfigureDecks({ client, decks, initialDeckIds, onDecksReloaded, onSelectionChange }: ConfigureDecksProps) {
   const [selectedDeckIds, setSelectedDeckIds] = useState(() => new Set(initialDeckIds));
   const [isSaving, setIsSaving] = useState(false);
+  const reloadAbortable = useRef<AbortController | undefined>(undefined);
+  const {
+    data: reloadedDecks,
+    isLoading: isReloadingDecks,
+    revalidate: reloadDecks,
+  } = usePromise(() => client.listDecks(reloadAbortable.current?.signal), [], {
+    abortable: reloadAbortable,
+    onData: onDecksReloaded,
+    onError: async (error) => {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Could Not Reload Decks",
+        message: mochiErrorMessage(error),
+      });
+    },
+  });
+  const hierarchicalDecks = hierarchyDecks(reloadedDecks ?? decks);
 
   async function toggleDeck(deck: MochiDeck): Promise<void> {
     if (isSaving) {
@@ -309,21 +353,31 @@ function ConfigureDecks({ decks, initialDeckIds, onSelectionChange }: ConfigureD
   }
 
   return (
-    <List isLoading={isSaving} navigationTitle="Configure Visible Decks" searchBarPlaceholder="Search Mochi decks">
-      {decks.map((deck) => {
+    <List
+      isLoading={isSaving || isReloadingDecks}
+      navigationTitle="Configure Visible Decks"
+      searchBarPlaceholder="Search Mochi decks"
+    >
+      {hierarchicalDecks.map(({ deck, path }) => {
         const isSelected = selectedDeckIds.has(deck.id);
         return (
           <List.Item
             key={deck.id}
             icon={Icon.Book}
-            title={deck.name}
-            accessories={[{ icon: isSelected ? Icon.CheckCircle : Icon.Circle }]}
+            title={formatDeckHierarchyTitle(path)}
+            accessories={isSelected ? [{ icon: Icon.Tack }] : undefined}
             actions={
               <ActionPanel>
                 <Action
-                  title={isSelected ? "Hide Deck" : "Show Deck"}
+                  title={isSelected ? "Remove from Visible Decks" : "Add to Visible Decks"}
                   icon={isSelected ? Icon.EyeDisabled : Icon.Eye}
                   onAction={() => toggleDeck(deck)}
+                />
+                <Action
+                  title="Reload Decks"
+                  icon={Icon.ArrowClockwise}
+                  shortcut={Keyboard.Shortcut.Common.Refresh}
+                  onAction={() => reloadDecks()}
                 />
               </ActionPanel>
             }

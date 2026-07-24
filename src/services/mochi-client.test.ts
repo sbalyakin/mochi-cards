@@ -165,11 +165,13 @@ describe("MochiClient", () => {
     expect(isMochiDeckNotFoundError(caughtError)).toBe(true);
   });
 
-  it("loads every page of decks and sorts them", async () => {
+  it("loads every page of decks, including parent relationships, and sorts them", async () => {
     const fetch = vi
       .fn<FetchLike>()
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ bookmark: "next-page", docs: [{ id: "deck-2", name: "Words" }] }))
+        new Response(
+          JSON.stringify({ bookmark: "next-page", docs: [{ id: "deck-2", name: "Words", "parent-id": "[[deck-1]]" }] })
+        )
       )
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ bookmark: "next-page", docs: [{ id: "deck-1", name: "Greek" }] }))
@@ -178,7 +180,7 @@ describe("MochiClient", () => {
 
     await expect(client.listDecks()).resolves.toEqual([
       { id: "deck-1", name: "Greek" },
-      { id: "deck-2", name: "Words" },
+      { id: "deck-2", name: "Words", parentId: "deck-1" },
     ]);
     expect(fetch).toHaveBeenNthCalledWith(
       1,
