@@ -397,16 +397,6 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
   const generatedSession = session?.mode === "generated" ? session : undefined;
   const manuallyEditedSession = session?.mode === "manually-edited" ? session : undefined;
   const visibleTags = mode.kind === "create" ? template.tags : mode.card.tags;
-  const status = !session
-    ? mode.kind === "create"
-      ? "Creating card"
-      : "Updating card"
-    : session.mode === "manually-edited"
-      ? "Manually edited"
-      : fieldErrors.length > 0
-        ? "Needs attention"
-        : "Ready";
-
   function leavePreview(): void {
     activeController.current?.abort(new Error("Preview closed"));
     if (mode.kind === "create") {
@@ -425,13 +415,8 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
       markdown={session ? previewMarkdown || "_No generated content yet._" : creationMarkdown}
       metadata={
         <Detail.Metadata>
-          <Detail.Metadata.Label title="Template" text={template.name} icon={Icon.Document} />
-          <Detail.Metadata.Label title="Deck" text={template.deckName} />
-          <Detail.Metadata.Label
-            title="Status"
-            text={status}
-            icon={session && fieldErrors.length > 0 ? Icon.Warning : session ? Icon.CheckCircle : Icon.Clock}
-          />
+          <Detail.Metadata.Label title="Template" text={template.name} icon={Icon.Snippets} />
+          <Detail.Metadata.Label title="Deck" text={template.deckName} icon={Icon.Book} />
           {duplicate ? (
             <Detail.Metadata.Label title="Duplicate" text={`A card for "${duplicate.name}" already exists`} icon="⚠️" />
           ) : null}
