@@ -4,6 +4,7 @@ import type {
   MochiTemplateSnapshotField,
   TemplateInputField,
 } from "./template";
+import { ensurePrimaryMochiBinding, isPrimaryInputType, MOCHI_PRIMARY_FIELD_ID } from "./primary-field";
 
 export type MappableMochiFieldType = "text" | "number" | "boolean";
 export type MochiFieldClassification = "mappable" | "unsupported";
@@ -59,7 +60,7 @@ export function createAutomaticBindings(
   fields: readonly TemplateInputField[],
   template: MochiTemplateSnapshot
 ): readonly MochiFieldBinding[] {
-  return template.fields.flatMap((target) => {
+  const bindings = template.fields.flatMap((target) => {
     if (classifyMochiField(target) !== "mappable") {
       return [];
     }
@@ -71,6 +72,18 @@ export function createAutomaticBindings(
       ? [{ kind: "input" as const, targetFieldId: target.id, sourceFieldId: matches[0].id }]
       : [];
   });
+  return ensurePrimaryMochiBinding(fields, template, bindings);
+}
+
+export function isMochiBindingCompatible(source: TemplateInputField, target: MochiTemplateSnapshotField): boolean {
+  if (target.id !== MOCHI_PRIMARY_FIELD_ID) {
+    return isDirectBindingCompatible(source, target);
+  }
+  if (!isPrimaryInputType(source.type)) {
+    return false;
+  }
+  const targetType = mochiFieldValueType(target);
+  return targetType === "text" || (targetType === "number" && source.type === "number");
 }
 
 export type TemplateDriftIssue = {

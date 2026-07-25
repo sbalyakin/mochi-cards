@@ -1,4 +1,5 @@
-import { classifyMochiField, isDirectBindingCompatible } from "./mochi-template";
+import { classifyMochiField, isMochiBindingCompatible } from "./mochi-template";
+import { MOCHI_PRIMARY_FIELD_ID } from "./primary-field";
 import type {
   CardTemplate,
   CardTemplateDraft,
@@ -18,6 +19,11 @@ export type TemplateValidationErrorCode =
   | "field-name-required"
   | "field-name-invalid"
   | "field-name-duplicate"
+  | "primary-field-required"
+  | "primary-field-type"
+  | "primary-field-value-required"
+  | "primary-mapping-required"
+  | "primary-target-required"
   | "target-needs-configuration"
   | "target-unavailable"
   | "binding-target-duplicate"
@@ -86,6 +92,29 @@ export function assertValidTemplate(template: CardTemplate | CardTemplateDraft):
 }
 
 function validateInputFields(fields: readonly TemplateInputField[], errors: TemplateValidationError[]): void {
+  const primary = fields[0];
+  if (!primary) {
+    errors.push({
+      code: "primary-field-required",
+      path: "fields",
+      message: "A primary card field is required",
+    });
+    return;
+  }
+  if (primary.type === "boolean") {
+    errors.push({
+      code: "primary-field-type",
+      path: "fields.0.type",
+      message: "The primary card field must be Text or Number",
+    });
+  } else if (!primary.required) {
+    errors.push({
+      code: "primary-field-value-required",
+      path: "fields.0.required",
+      message: "The primary card field is always required",
+    });
+  }
+
   const ids = new Set<string>();
   const names = new Set<string>();
   fields.forEach((field, index) => {
@@ -136,6 +165,23 @@ function validateBindings(
   const sourceById = new Map(sourceFields.map((field) => [field.id, field]));
   const targetById = new Map(targetFields.map((field) => [field.id, field]));
   const targetIds = new Set<string>();
+  const primary = sourceFields[0];
+  const primaryTarget = targetFields.find((field) => field.id === MOCHI_PRIMARY_FIELD_ID);
+  const primaryBinding = bindings.find((binding) => binding.targetFieldId === MOCHI_PRIMARY_FIELD_ID);
+
+  if (!primaryTarget) {
+    errors.push({
+      code: "primary-target-required",
+      path: "output",
+      message: "The Mochi template does not expose its primary name field",
+    });
+  } else if (!primary || primaryBinding?.kind !== "input" || primaryBinding.sourceFieldId !== primary.id) {
+    errors.push({
+      code: "primary-mapping-required",
+      path: "output",
+      message: "The primary input must map to the Mochi card name",
+    });
+  }
 
   bindings.forEach((binding, index) => {
     const path = `output.bindings.${index}`;
@@ -169,7 +215,7 @@ function validateBindings(
           path,
           message: `Input field ${binding.sourceFieldId} no longer exists`,
         });
-      } else if (!isDirectBindingCompatible(source, target)) {
+      } else if (!isMochiBindingCompatible(source, target)) {
         errors.push({
           code: "binding-type-incompatible",
           path,

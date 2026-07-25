@@ -128,7 +128,7 @@ describe("TemplateRepository", () => {
 
     await expect(repository.list()).resolves.toEqual([
       expect.objectContaining({
-        output: { kind: "card-body" },
+        output: { kind: "card-body", templateMode: "none" },
         fields: [{ id: "legacy-1", name: "word", type: "text", required: true, multiline: false }],
       }),
     ]);
@@ -185,19 +185,33 @@ describe("TemplateRepository", () => {
     ]);
   });
 
-  it("keeps stable field IDs through duplication and supports zero inputs", async () => {
+  it("migrates version 6 card-body output to the explicit no-template mode", async () => {
+    const created = await repository.create(draft());
+    storage.value = JSON.stringify({
+      version: 6,
+      templates: [{ ...created, output: { kind: "card-body" } }],
+    });
+
+    await expect(repository.list()).resolves.toEqual([
+      expect.objectContaining({ output: { kind: "card-body", templateMode: "none" } }),
+    ]);
+  });
+
+  it("keeps the generated primary field stable through duplication", async () => {
     const created = await repository.create(draft({ fields: [], cardBody: "Static" }));
     const duplicate = await repository.duplicate(created.id);
 
-    expect(created.fields).toEqual([]);
-    expect(duplicate.fields).toEqual([]);
+    expect(created.fields).toEqual([
+      { id: "primary-name", name: "Name", type: "text", required: true, multiline: false },
+    ]);
+    expect(duplicate.fields).toEqual(created.fields);
   });
 
   it("rejects an unsupported storage version without overwriting it", async () => {
-    storage.value = JSON.stringify({ version: 7, templates: [] });
+    storage.value = JSON.stringify({ version: 8, templates: [] });
 
     await expect(repository.create(draft())).rejects.toMatchObject({ kind: "corrupted-data" });
-    expect(JSON.parse(storage.value)).toEqual({ version: 7, templates: [] });
+    expect(JSON.parse(storage.value)).toEqual({ version: 8, templates: [] });
   });
 });
 
@@ -206,7 +220,7 @@ function draft(overrides: Partial<CardTemplateDraft> = {}): CardTemplateDraft {
     name: "Words",
     fields: [{ id: "word", name: "word", type: "text", required: true, multiline: false }],
     cardBody: "# <<word>>",
-    output: { kind: "card-body" },
+    output: { kind: "card-body", templateMode: "none" },
     deckId: "deck-1",
     deckName: "Vocabulary",
     tags: [" vocabulary ", "vocabulary"],

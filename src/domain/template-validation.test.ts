@@ -40,7 +40,7 @@ describe("validateTemplate", () => {
     );
   });
 
-  it("validates direct and custom Mochi mappings while allowing no mappings", () => {
+  it("requires only the primary Mochi mapping and validates additional mappings", () => {
     const base = createDraft({
       fields: [
         { id: "word", name: "word", type: "text", required: true, multiline: false },
@@ -54,11 +54,12 @@ describe("validateTemplate", () => {
             id: "remote",
             name: "Remote",
             fields: [
+              { id: "name", name: "Name", type: "text", multiline: false },
               { id: "front", name: "Front", type: "text", multiline: false },
               { id: "amount", name: "Amount", type: "number", multiline: false },
             ],
           },
-          bindings: [],
+          bindings: [{ kind: "input", targetFieldId: "name", sourceFieldId: "word" }],
         },
       },
     });
@@ -73,11 +74,13 @@ describe("validateTemplate", () => {
             id: "remote",
             name: "Remote",
             fields: [
+              { id: "name", name: "Name", type: "text", multiline: false },
               { id: "front", name: "Front", type: "text", multiline: false },
               { id: "amount", name: "Amount", type: "number", multiline: false },
             ],
           },
           bindings: [
+            { kind: "input" as const, targetFieldId: "name", sourceFieldId: "word" },
             { kind: "input" as const, targetFieldId: "amount", sourceFieldId: "word" },
             { kind: "custom" as const, targetFieldId: "front", template: "<<missing>>" },
           ],
@@ -87,6 +90,39 @@ describe("validateTemplate", () => {
     expect(validateTemplate(invalid).map((error) => error.code)).toEqual(
       expect.arrayContaining(["binding-type-incompatible", "unknown-placeholder"])
     );
+  });
+
+  it("enforces the primary field invariants", () => {
+    expect(validateTemplate(createDraft({ fields: [] })).map((error) => error.code)).toContain(
+      "primary-field-required"
+    );
+    expect(
+      validateTemplate(createDraft({ fields: [{ id: "word", name: "word", type: "boolean" }] })).map(
+        (error) => error.code
+      )
+    ).toContain("primary-field-type");
+    expect(
+      validateTemplate(createDraft({ fields: [{ id: "word", name: "word", type: "number", required: false }] })).map(
+        (error) => error.code
+      )
+    ).toContain("primary-field-value-required");
+  });
+
+  it("requires the primary input to map to the Mochi name field", () => {
+    const output = {
+      kind: "mochi-template" as const,
+      target: {
+        status: "configured" as const,
+        template: {
+          id: "remote",
+          name: "Remote",
+          fields: [{ id: "name", name: "Name", type: "text", multiline: false }],
+        },
+        bindings: [],
+      },
+    };
+
+    expect(validateTemplate(createDraft({ output })).map((error) => error.code)).toContain("primary-mapping-required");
   });
 
   it("blocks migrated Mochi targets until mappings are configured", () => {
@@ -107,7 +143,7 @@ function createDraft(overrides: Partial<CardTemplateDraft> = {}): CardTemplateDr
     name: "Words",
     fields: [{ id: "word", name: "word", type: "text", required: true, multiline: false }],
     cardBody: "# <<word>>",
-    output: { kind: "card-body" },
+    output: { kind: "card-body", templateMode: "none" },
     deckId: "deck-1",
     deckName: "Vocabulary",
     tags: [],

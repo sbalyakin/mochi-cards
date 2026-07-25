@@ -12,10 +12,11 @@ import {
   type MochiTemplateSnapshotField,
   type TemplateInputField,
 } from "../domain/template";
+import { ensurePrimaryInputField, ensurePrimaryMochiBinding, primarySourceFieldId } from "../domain/primary-field";
 import { assertValidTemplate } from "../domain/template-validation";
 
 const STORAGE_KEY = "mochi-card-templates";
-const STORAGE_VERSION = 6;
+const STORAGE_VERSION = 7;
 
 type TemplateEnvelope = {
   readonly version: typeof STORAGE_VERSION;
@@ -129,10 +130,18 @@ export class TemplateRepository {
       if (isTemplateEnvelope(parsed)) {
         return { version: STORAGE_VERSION, templates: parsed.templates.map(normalizeStoredTemplate) };
       }
+      if (isLegacyV6Envelope(parsed)) {
+        return {
+          version: STORAGE_VERSION,
+          templates: parsed.templates.map((value) => normalizeStoredTemplate(migrateLegacyV6Template(value))),
+        };
+      }
       if (isLegacyEnvelope(parsed)) {
         return {
           version: STORAGE_VERSION,
-          templates: parsed.templates.map((value) => migrateLegacyTemplate(value, parsed.version)),
+          templates: parsed.templates.map((value) =>
+            normalizeStoredTemplate(migrateLegacyTemplate(value, parsed.version))
+          ),
         };
       }
       throw new Error("Stored template data does not match a supported version");
@@ -163,11 +172,12 @@ const raycastTemplateStorage: TemplateStorage = {
 };
 
 function normalizeDraft(draft: CardTemplateDraft): CardTemplateDraft {
+  const fields = ensurePrimaryInputField(draft.fields.map(normalizeInputField), primarySourceFieldId(draft.output));
   return {
     name: draft.name.trim(),
-    fields: draft.fields.map(normalizeInputField),
+    fields,
     cardBody: draft.cardBody,
-    output: normalizeOutput(draft.output),
+    output: normalizeOutput(draft.output, fields),
     deckId: normalizeDeckId(draft.deckId),
     deckName: draft.deckName.trim(),
     tags: [...new Set(draft.tags.map((tag) => tag.trim()).filter(Boolean))],
@@ -177,10 +187,14 @@ function normalizeDraft(draft: CardTemplateDraft): CardTemplateDraft {
 }
 
 function normalizeStoredTemplate(template: CardTemplate): CardTemplate {
+  const fields = ensurePrimaryInputField(
+    template.fields.map(normalizeInputField),
+    primarySourceFieldId(template.output)
+  );
   return {
     ...template,
-    fields: template.fields.map(normalizeInputField),
-    output: normalizeOutput(template.output),
+    fields,
+    output: normalizeOutput(template.output, fields),
     deckId: normalizeDeckId(template.deckId),
     deckName: template.deckName.trim(),
   };
@@ -202,7 +216,7 @@ function normalizeInputField(field: TemplateInputField): TemplateInputField {
   return { id: field.id.trim(), name: field.name.trim(), type: "boolean" };
 }
 
-function normalizeOutput(output: CardOutput): CardOutput {
+function normalizeOutput(output: CardOutput, fields: readonly TemplateInputField[]): CardOutput {
   if (output.kind === "card-body") {
     return output;
   }
@@ -212,12 +226,13 @@ function normalizeOutput(output: CardOutput): CardOutput {
       target: { status: "needs-configuration", templateId: output.target.templateId.trim() },
     };
   }
+  const template = normalizeSnapshot(output.target.template);
   return {
     kind: "mochi-template",
     target: {
       status: "configured",
-      template: normalizeSnapshot(output.target.template),
-      bindings: output.target.bindings.map(normalizeBinding),
+      template,
+      bindings: ensurePrimaryMochiBinding(fields, template, output.target.bindings.map(normalizeBinding)),
     },
   };
 }
@@ -301,8 +316,12 @@ function isCardOutput(value: unknown): value is CardOutput {
     return false;
   }
   if (value.kind === "card-body") {
-    return true;
+    return value.templateMode === "none" || value.templateMode === "deck-default";
   }
+  return isMochiTemplateOutput(value);
+}
+
+function isMochiTemplateOutput(value: Record<string, unknown>): boolean {
   if (value.kind !== "mochi-template" || !isRecord(value.target)) {
     return false;
   }
@@ -315,6 +334,58 @@ function isCardOutput(value: unknown): value is CardOutput {
     Array.isArray(value.target.bindings) &&
     value.target.bindings.every(isBinding)
   );
+}
+
+type LegacyV6CardOutput = { readonly kind: "card-body" } | Extract<CardOutput, { readonly kind: "mochi-template" }>;
+
+type LegacyV6Template = Omit<CardTemplate, "output"> & { readonly output: LegacyV6CardOutput };
+
+type LegacyV6Envelope = {
+  readonly version: 6;
+  readonly templates: readonly LegacyV6Template[];
+};
+
+function isLegacyV6Envelope(value: unknown): value is LegacyV6Envelope {
+  return (
+    isRecord(value) &&
+    value.version === 6 &&
+    Array.isArray(value.templates) &&
+    value.templates.every(isLegacyV6Template)
+  );
+}
+
+function isLegacyV6Template(value: unknown): value is LegacyV6Template {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    Array.isArray(value.fields) &&
+    value.fields.every(isInputField) &&
+    typeof value.cardBody === "string" &&
+    isLegacyV6CardOutput(value.output) &&
+    typeof value.deckId === "string" &&
+    typeof value.deckName === "string" &&
+    Array.isArray(value.tags) &&
+    value.tags.every((tag) => typeof tag === "string") &&
+    typeof value.reviewReverse === "boolean" &&
+    typeof value.archived === "boolean" &&
+    typeof value.updatedAt === "string" &&
+    !Number.isNaN(Date.parse(value.updatedAt))
+  );
+}
+
+function isLegacyV6CardOutput(value: unknown): value is LegacyV6CardOutput {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return value.kind === "card-body" || isMochiTemplateOutput(value);
+}
+
+function migrateLegacyV6Template(value: LegacyV6Template): CardTemplate {
+  return {
+    ...value,
+    output: value.output.kind === "card-body" ? { kind: "card-body", templateMode: "none" } : value.output,
+  };
 }
 
 function isSnapshot(value: unknown): value is MochiTemplateSnapshot {
@@ -408,7 +479,7 @@ function migrateLegacyTemplate(value: LegacyTemplate, version: LegacyEnvelope["v
     cardBody: value.content,
     output: mochiTemplateId
       ? { kind: "mochi-template", target: { status: "needs-configuration", templateId: mochiTemplateId } }
-      : { kind: "card-body" },
+      : { kind: "card-body", templateMode: "none" },
     deckId: normalizeDeckId(value.deckId),
     deckName: version === 1 ? "Unknown deck" : legacyDeckName(value.deckName),
     tags: value.tags,

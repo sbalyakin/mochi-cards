@@ -92,7 +92,11 @@ export type CreateMochiCardRequest = {
   readonly reviewReverse: boolean;
   readonly archived: boolean;
   readonly output:
-    | { readonly kind: "card-body"; readonly content: string }
+    | {
+        readonly kind: "card-body";
+        readonly content: string;
+        readonly templateMode: "none" | "deck-default";
+      }
     | {
         readonly kind: "mochi-template";
         readonly templateId: string;
@@ -136,7 +140,10 @@ export class MochiClient {
   async createCard(request: CreateMochiCardRequest, signal?: AbortSignal): Promise<CreatedMochiCard> {
     const outputPayload =
       request.output.kind === "card-body"
-        ? { content: request.output.content }
+        ? {
+            content: request.output.content,
+            ...(request.output.templateMode === "none" ? { "template-id": null } : {}),
+          }
         : {
             content: "",
             "template-id": request.output.templateId,

@@ -9,7 +9,7 @@ import {
 } from "./mochi-client";
 
 describe("MochiClient", () => {
-  it("posts the expected payload with HTTP Basic authentication", async () => {
+  it("omits the template ID when using the deck default", async () => {
     const fetch = vi
       .fn<FetchLike>()
       .mockResolvedValue(
@@ -33,6 +33,16 @@ describe("MochiClient", () => {
       "review-reverse?": true,
       "archived?": false,
     });
+  });
+
+  it("posts a null template ID when no template is selected", async () => {
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(new Response("", { status: 201 }));
+    const client = new MochiClient("secret-key", fetch);
+
+    await client.createCard(createRequest({ output: { kind: "card-body", content: "# Card", templateMode: "none" } }));
+
+    const [, init] = fetch.mock.calls[0];
+    expect(JSON.parse(String(init?.body))).toMatchObject({ "template-id": null });
   });
 
   it("posts the selected Mochi template ID", async () => {
@@ -450,7 +460,7 @@ function createRequest(overrides: Partial<CreateMochiCardRequest> = {}): CreateM
     tags: ["greek"],
     reviewReverse: true,
     archived: false,
-    output: { kind: "card-body", content: "# Card" },
+    output: { kind: "card-body", content: "# Card", templateMode: "deck-default" },
     ...overrides,
   };
 }

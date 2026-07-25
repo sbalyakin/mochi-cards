@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   editMarkdown,
+  editMochiValues,
   generateSession,
   generationFieldTitle,
   getAiFieldErrors,
@@ -182,11 +183,23 @@ describe("generation session", () => {
       { ask: async (prompt) => (prompt.includes("number") ? "42" : "unused") }
     );
 
-    expect(getMochiFieldValues(generated)).toEqual({ front: "λόγος", amount: "42", active: true });
+    expect(getMochiFieldValues(generated)).toEqual({ name: "λόγος", amount: "42", active: true });
     expect(getGeneratedAiFields(generated).map((field) => field.id)).toEqual(["mochi:amount:ai-field-1"]);
     expect(generationFieldTitle(generated, "mochi:amount:ai-field-1")).toBe("Amount · AI Field 1");
     expect(generationFieldTitle(generated, "mochi:active")).toBe("Active");
     expect(isSessionReady(generated)).toBe(true);
+  });
+
+  it("keeps the Mochi card name required after manual editing", async () => {
+    const generated = await generateSession(
+      mochiTemplate(),
+      { word: "λόγος", count: "7", enabled: true },
+      { ask: async () => "42" }
+    );
+    const edited = editMochiValues(generated, { ...getMochiFieldValues(generated), name: " " });
+
+    expect(getAiFieldErrors(edited)).toEqual([{ id: "mochi:name", message: "Name is required" }]);
+    expect(isSessionReady(edited)).toBe(false);
   });
 
   it("blocks invalid custom number and boolean conversions", async () => {
@@ -222,11 +235,11 @@ function template(content: string): CardTemplate {
     id: "template-1",
     name: "Test",
     fields: [
-      { id: "word", name: "word", type: "text", required: false, multiline: false },
+      { id: "word", name: "word", type: "text", required: true, multiline: false },
       { id: "context", name: "context", type: "text", required: false, multiline: true },
     ],
     cardBody: content,
-    output: { kind: "card-body" },
+    output: { kind: "card-body", templateMode: "none" },
     deckId: "deck-1",
     deckName: "Vocabulary",
     tags: [],
@@ -261,13 +274,13 @@ function mochiTemplate(): CardTemplate & {
           id: "mochi-template",
           name: "Mochi",
           fields: [
-            { id: "front", name: "Front", type: "text", multiline: false },
+            { id: "name", name: "Name", type: "text", multiline: false },
             { id: "amount", name: "Amount", type: "number", multiline: false },
             { id: "active", name: "Active", type: "boolean", multiline: false },
           ],
         },
         bindings: [
-          { kind: "input", targetFieldId: "front", sourceFieldId: "word" },
+          { kind: "input", targetFieldId: "name", sourceFieldId: "word" },
           { kind: "custom", targetFieldId: "amount", template: "<ai>number <<count>></ai>" },
           { kind: "input", targetFieldId: "active", sourceFieldId: "enabled" },
         ],

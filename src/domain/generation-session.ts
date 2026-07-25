@@ -1,4 +1,5 @@
 import { normalizedMochiFieldType } from "./mochi-template";
+import { MOCHI_PRIMARY_FIELD_ID } from "./primary-field";
 import type {
   CardTemplate,
   FieldValue,
@@ -460,6 +461,9 @@ function validateEditedValues(
     }
     if (typeof value !== "string") {
       return [{ id: `mochi:${field.id}`, message: `${field.name} must be text` }];
+    }
+    if (field.id === MOCHI_PRIMARY_FIELD_ID && !value.trim()) {
+      return [{ id: `mochi:${field.id}`, message: `${field.name} is required` }];
     }
     if (type === "number" && (!value.trim() || !Number.isFinite(Number(value)))) {
       return [{ id: `mochi:${field.id}`, message: `${field.name} must be a non-empty finite number` }];

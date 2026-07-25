@@ -43,7 +43,7 @@ export type MochiFieldBinding =
   | { readonly kind: "custom"; readonly targetFieldId: string; readonly template: string };
 
 export type CardOutput =
-  | { readonly kind: "card-body" }
+  | { readonly kind: "card-body"; readonly templateMode: "none" | "deck-default" }
   | {
       readonly kind: "mochi-template";
       readonly target:

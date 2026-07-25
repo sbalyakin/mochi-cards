@@ -40,13 +40,17 @@ Each `<ai>` block is a separate request. If one translation comes back wrong, yo
 
 ## Template syntax
 
-A template has a name, typed input fields, a Mochi deck, and an output mode. **No Template** renders the saved Card Body. Selecting a Mochi template maps local inputs or custom generated values to its fields. Tags, reverse review, and archived status are optional.
+A template has a name, typed input fields, a Mochi deck, and an output mode. **No Template** and **Default Deck Template** render the saved Card Body. No Template explicitly clears the Mochi template, while Default Deck Template lets Mochi apply the template configured for the deck. Selecting a specific Mochi template maps local inputs or custom generated values to its fields. Tags, reverse review, and archived status are optional.
 
 The template form loads decks from `GET https://app.mochi.cards/api/decks` and Mochi templates from `GET https://app.mochi.cards/api/templates/`. The internal IDs are used only when sending a card to Mochi. `No Template` is selected by default.
 
 ### Variables
 
 Inputs can be text, number, or boolean. Declare them in the template settings, then reference their names with placeholders in Card Body or custom mappings:
+
+The first input is the card's primary field and duplicate-detection key. It is always required, accepts text or numbers, and cannot be removed or reordered. When a specific Mochi template is selected, this input is always mapped to its `name` field.
+
+While the primary field is being filled, Create Card compares it with the cached card names for the selected deck. A match is shown below the field, and **Generate Preview** asks for confirmation before continuing. Confirming is the final duplicate check; saving the preview does not make another Mochi request for it.
 
 ```markdown
 # <<word>>
@@ -102,7 +106,7 @@ When editing an existing card, the primary preview action is **Update Card in Mo
 
 ## Sending to Mochi
 
-Confirmed cards use one of two request shapes. Card Body mode sends rendered Markdown in `content` and omits `template-id` and `fields`:
+Confirmed cards use one of three request shapes. **No Template** sends rendered Markdown in `content`, an explicit `null` `template-id`, and no fields:
 
 ```http
 POST https://app.mochi.cards/api/cards/
@@ -111,11 +115,14 @@ POST https://app.mochi.cards/api/cards/
 ```json
 {
   "content": "...",
-  "deck-id": "..."
+  "deck-id": "...",
+  "template-id": null
 }
 ```
 
-Mochi template mode sends empty `content`, the selected `template-id`, and only mapped fields. Text and number values are JSON strings; boolean values remain JSON booleans. Unmapped fields are omitted.
+**Default Deck Template** sends the same Card Body but omits `template-id`, allowing Mochi to use the template configured for the deck.
+
+Specific Mochi template mode sends empty `content`, the selected `template-id`, and only mapped fields. Text and number values are JSON strings; boolean values remain JSON booleans. Unmapped fields are omitted.
 
 ```json
 {

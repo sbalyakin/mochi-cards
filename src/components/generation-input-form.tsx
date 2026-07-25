@@ -1,8 +1,12 @@
-import { Action, ActionPanel, Form, Icon, showToast, Toast, useNavigation } from "@raycast/api";
-import { useState, type ReactNode } from "react";
+import { Action, ActionPanel, Alert, confirmAlert, Form, Icon, showToast, Toast, useNavigation } from "@raycast/api";
+import { Fragment, useState, type ReactNode } from "react";
 
+import { findDuplicateCardByName } from "../domain/card-duplicates";
 import type { CardTemplate, FieldValues } from "../domain/template";
+import { CardCacheRepository } from "../storage/card-cache-repository";
 import { CardPreview } from "./card-preview";
+
+const cardCacheRepository = new CardCacheRepository();
 
 type GenerationInputFormProps = {
   readonly template: CardTemplate;
@@ -30,6 +34,12 @@ export function GenerationInputForm({
     );
   const [values, setValues] = useState<FieldValues>(emptyValues);
   const [errors, setErrors] = useState<Readonly<Record<string, string>>>({});
+  const primaryField = template.fields[0];
+  const primaryValue = primaryField ? values[primaryField.id] : undefined;
+  const duplicate =
+    mode === "create" && typeof primaryValue === "string"
+      ? findDuplicateCardByName(cardCacheRepository.get(template.deckId), primaryValue)
+      : undefined;
   function resetInput(): void {
     setValues(emptyValues());
     setErrors({});
@@ -56,6 +66,23 @@ export function GenerationInputForm({
     if (Object.keys(nextErrors).length > 0) {
       await showToast({ style: Toast.Style.Failure, title: "Fill in the required fields" });
       return;
+    }
+
+    const currentPrimaryValue = primaryField ? values[primaryField.id] : undefined;
+    const currentDuplicate =
+      mode === "create" && typeof currentPrimaryValue === "string"
+        ? findDuplicateCardByName(cardCacheRepository.get(template.deckId), currentPrimaryValue)
+        : undefined;
+    if (currentDuplicate) {
+      const confirmed = await confirmAlert({
+        icon: Icon.Warning,
+        title: "Card Already Exists",
+        message: `A card named “${currentDuplicate.name}” already exists in this deck. Create another card?`,
+        primaryAction: { title: "Create Duplicate", style: Alert.ActionStyle.Destructive },
+      });
+      if (!confirmed) {
+        return;
+      }
     }
 
     if (onGenerate) {
@@ -85,13 +112,16 @@ export function GenerationInputForm({
       {warnings.map((warning, index) => (
         <Form.Description key={`${warning}-${index}`} title="Warning" text={warning} />
       ))}
-      {template.fields.map((field) => {
+      {template.fields.map((field, index) => {
+        const title = index === 0 ? `${field.name} ★` : field.name;
+        const info = index === 0 ? "This is the card's primary field and sets its name in Mochi." : undefined;
         if (field.type === "boolean") {
           return (
             <Form.Checkbox
               key={field.id}
               id={field.id}
-              title={field.name}
+              title={title}
+              info={info}
               label="Enabled"
               value={values[field.id] === true}
               onChange={(value) => {
@@ -104,7 +134,8 @@ export function GenerationInputForm({
         }
         const props = {
           id: field.id,
-          title: field.name,
+          title,
+          info,
           placeholder: field.required ? "Required" : "Optional",
           value: String(values[field.id] ?? ""),
           error: errors[field.id],
@@ -121,10 +152,15 @@ export function GenerationInputForm({
             }
           },
         };
-        return field.type === "text" && field.multiline ? (
-          <Form.TextArea key={field.id} {...props} />
-        ) : (
-          <Form.TextField key={field.id} {...props} />
+        const input =
+          field.type === "text" && field.multiline ? <Form.TextArea {...props} /> : <Form.TextField {...props} />;
+        return (
+          <Fragment key={field.id}>
+            {input}
+            {index === 0 && duplicate ? (
+              <Form.Description text={`⚠️ A card named “${duplicate.name}” already exists in this deck.`} />
+            ) : null}
+          </Fragment>
         );
       })}
     </Form>

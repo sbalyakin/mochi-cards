@@ -41,6 +41,7 @@ import {
   type MochiTemplate,
 } from "../services/mochi-client";
 import { RaycastAiClient } from "../services/raycast-ai-client";
+import { CardCacheRepository } from "../storage/card-cache-repository";
 import { CardGenerationContextRepository } from "../storage/card-generation-context-repository";
 import { MarkdownEditor } from "./markdown-editor";
 import { MochiValuesEditor } from "./mochi-values-editor";
@@ -64,6 +65,7 @@ type Preferences = {
 };
 
 const aiClient = new RaycastAiClient();
+const cardCacheRepository = new CardCacheRepository();
 const contextRepository = new CardGenerationContextRepository();
 
 export function CardPreview({ template, values, mode }: CardPreviewProps) {
@@ -232,20 +234,17 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
             archived: template.archived,
             output: mochiOutput
               ? { kind: "mochi-template", templateId: mochiOutput.templateId, fields: mochiOutput.fields }
-              : { kind: "card-body", content: markdown },
+              : { kind: "card-body", content: markdown, templateMode: cardBodyTemplateMode(template) },
           },
           controller.signal
         );
-        if (controller.signal.aborted) {
-          return;
-        }
         await showToast({
           style: Toast.Style.Success,
           title: "Card added to Mochi",
           message: card.id ? `Card ID: ${card.id}` : template.name,
         });
-        if (controller.signal.aborted) {
-          return;
+        if (card.id) {
+          await cacheCreatedCardBestEffort(client, card.id, controller.signal);
         }
         if (card.id && mochiOutput) {
           await saveContextWithWarning(card.id, template, values, mochiOutput.templateId, controller.signal);
@@ -256,13 +255,7 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
             message: "Mochi did not return a card ID, so this card's generation inputs cannot be restored later.",
           });
         }
-        if (controller.signal.aborted) {
-          return;
-        }
         mode.onCardAdded();
-        if (controller.signal.aborted) {
-          return;
-        }
         pop();
       } else {
         if (!mochiOutput) {
@@ -568,6 +561,17 @@ function renderMochiTemplatePreview(
   return cardMarkdown(card, template);
 }
 
+async function cacheCreatedCardBestEffort(client: MochiClient, cardId: string, signal: AbortSignal): Promise<void> {
+  try {
+    const createdCard = await client.getCard(cardId, signal);
+    if (!signal.aborted) {
+      cardCacheRepository.upsert(createdCard.deckId, { id: createdCard.id, name: createdCard.name });
+    }
+  } catch {
+    // Card creation has already succeeded. Cache refresh must never turn it into a failed operation.
+  }
+}
+
 async function saveContextWithWarning(
   cardId: string,
   template: CardTemplate,
@@ -616,6 +620,13 @@ function mochiErrorMessage(error: unknown): string {
     return "Check the Mochi API key in extension preferences.";
   }
   return errorMessage(error);
+}
+
+function cardBodyTemplateMode(template: CardTemplate): "none" | "deck-default" {
+  if (template.output.kind !== "card-body") {
+    throw new Error("Card Body output requires a card-body template mode");
+  }
+  return template.output.templateMode;
 }
 
 function errorMessage(error: unknown): string {

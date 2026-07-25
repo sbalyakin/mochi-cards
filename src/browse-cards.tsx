@@ -33,6 +33,7 @@ import {
 } from "./services/mochi-client";
 import { DeckSelectionRepository } from "./storage/deck-selection-repository";
 import { CardGenerationContextRepository } from "./storage/card-generation-context-repository";
+import { CardCacheRepository } from "./storage/card-cache-repository";
 import {
   MochiCatalogRepository,
   type MochiCatalog,
@@ -42,6 +43,7 @@ import { TemplateRepository } from "./storage/template-repository";
 
 const deckSelectionRepository = new DeckSelectionRepository();
 const cardGenerationContextRepository = new CardGenerationContextRepository();
+const cardCacheRepository = new CardCacheRepository();
 const generationTemplateRepository = new TemplateRepository();
 const mochiCatalogRepository = new MochiCatalogRepository();
 const dateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
@@ -377,9 +379,12 @@ function CardList({
   });
   useEffect(() => {
     if (!isLoading) {
+      if (!error || cards.length > 0) {
+        cardCacheRepository.replace(deck.id, cards);
+      }
       onCardCountUpdated(deck.id, cards.length);
     }
-  }, [cards, deck.id, isLoading, onCardCountUpdated]);
+  }, [cards, deck.id, error, isLoading, onCardCountUpdated]);
   hasCardsRef.current = cards.length > 0;
   const isDeckNotFound = isMochiDeckNotFoundError(error);
   const visibleError = isDeckNotFound || cards.length === 0 ? error : undefined;

@@ -22,6 +22,13 @@ import {
   detectTemplateDrift,
   isDirectBindingCompatible,
 } from "../domain/mochi-template";
+import {
+  ensurePrimaryInputField,
+  ensurePrimaryMochiBinding,
+  isPrimaryInputType,
+  MOCHI_PRIMARY_FIELD_ID,
+  primarySourceFieldId,
+} from "../domain/primary-field";
 import type {
   CardOutput,
   CardTemplate,
@@ -50,6 +57,7 @@ type TemplateFormProps = {
 type Preferences = { readonly mochiApiKey: string };
 
 const NO_TEMPLATE_VALUE = "__no-template__";
+const DEFAULT_DECK_TEMPLATE_VALUE = "__default-deck-template__";
 const UNMAPPED_VALUE = "__unmapped__";
 const CUSTOM_VALUE = "__custom__";
 
@@ -72,6 +80,10 @@ export function TemplateForm({
   const initialSnapshot = initialTarget?.status === "configured" ? initialTarget.template : undefined;
   const initialMochiTemplateId =
     initialTarget?.status === "configured" ? initialTarget.template.id : initialTarget?.templateId;
+  const initialFields = ensurePrimaryInputField(
+    initial?.fields ?? [createInitialField()],
+    primarySourceFieldId(initial?.output)
+  );
   const [name, setName] = useState(initial?.name ?? "");
   const [deckId, setDeckId] = useState(initial?.deckId ?? "");
   const [mochiTemplateId, setMochiTemplateId] = useState(
@@ -79,15 +91,19 @@ export function TemplateForm({
       ? initialTarget.status === "configured"
         ? initialTarget.template.id
         : initialTarget.templateId
-      : NO_TEMPLATE_VALUE
+      : initial?.output.kind === "card-body" && initial.output.templateMode === "deck-default"
+        ? DEFAULT_DECK_TEMPLATE_VALUE
+        : NO_TEMPLATE_VALUE
   );
   const [tags, setTags] = useState(initial?.tags.join(", ") ?? "");
   const [cardBody, setCardBody] = useState(initial?.cardBody ?? "");
   const [reviewReverse, setReviewReverse] = useState(initial?.reviewReverse ?? false);
   const [archived, setArchived] = useState(initial?.archived ?? false);
-  const [fields, setFields] = useState<readonly TemplateInputField[]>(initial?.fields ?? [createInitialField()]);
+  const [fields, setFields] = useState<readonly TemplateInputField[]>(initialFields);
   const [bindings, setBindings] = useState<readonly MochiFieldBinding[]>(
-    initialTarget?.status === "configured" ? initialTarget.bindings : []
+    initialTarget?.status === "configured"
+      ? ensurePrimaryMochiBinding(initialFields, initialTarget.template, initialTarget.bindings)
+      : []
   );
   const [selectedSnapshotOverride, setSelectedSnapshotOverride] = useState<MochiTemplateSnapshot | undefined>();
   const [showValidation, setShowValidation] = useState(false);
@@ -138,7 +154,9 @@ export function TemplateForm({
           : catalog === undefined && initialSnapshot?.id === mochiTemplateId
             ? initialSnapshot
             : undefined;
-  const activeBindings = selectedSnapshot ? removeUnsupportedBindings(bindings, selectedSnapshot) : bindings;
+  const activeBindings = selectedSnapshot
+    ? ensurePrimaryMochiBinding(fields, selectedSnapshot, removeUnsupportedBindings(bindings, selectedSnapshot))
+    : bindings;
   const output = createOutput(mochiTemplateId, selectedSnapshot, activeBindings);
   const draft = createDraft({
     name,
@@ -274,7 +292,7 @@ export function TemplateForm({
       isMounted.current && templateLoadOperationNumber.current === currentOperation && !controller.signal.aborted;
     setIsLoadingTemplate(true);
     try {
-      if (bindings.length > 0 && mochiTemplateId !== NO_TEMPLATE_VALUE) {
+      if (bindings.length > 0 && !isCardBodyTemplateValue(mochiTemplateId)) {
         const confirmed = await confirmAlert({
           icon: Icon.Warning,
           title: "Replace Mochi field mappings?",
@@ -285,7 +303,7 @@ export function TemplateForm({
           return;
         }
       }
-      if (nextId === NO_TEMPLATE_VALUE) {
+      if (isCardBodyTemplateValue(nextId)) {
         setMochiTemplateId(nextId);
         setSelectedSnapshotOverride(undefined);
         setBindings([]);
@@ -342,18 +360,27 @@ export function TemplateForm({
   }
 
   function updateField(id: string, update: Partial<TemplateInputField>): void {
-    setFields((current) => current.map((field) => (field.id === id ? updateInputField(field, update) : field)));
+    setFields((current) =>
+      ensurePrimaryInputField(current.map((field) => (field.id === id ? updateInputField(field, update) : field)))
+    );
   }
 
   function updateFieldType(id: string, type: TemplateInputField["type"]): void {
-    setFields((current) => current.map((field) => (field.id === id ? changeInputFieldType(field, type) : field)));
+    setFields((current) => {
+      if (current[0]?.id === id && !isPrimaryInputType(type)) {
+        return current;
+      }
+      return ensurePrimaryInputField(
+        current.map((field) => (field.id === id ? changeInputFieldType(field, type) : field))
+      );
+    });
   }
 
   function moveField(id: string, direction: -1 | 1): void {
     setFields((current) => {
       const index = current.findIndex((field) => field.id === id);
       const destination = index + direction;
-      if (index < 0 || destination < 0 || destination >= current.length) {
+      if (index <= 0 || destination <= 0 || destination >= current.length) {
         return current;
       }
       const reordered = [...current];
@@ -364,6 +391,9 @@ export function TemplateForm({
   }
 
   function updateBinding(targetFieldId: string, value: string): void {
+    if (targetFieldId === MOCHI_PRIMARY_FIELD_ID) {
+      return;
+    }
     setBindings((current) => {
       const remaining = current.filter((binding) => binding.targetFieldId !== targetFieldId);
       if (value === UNMAPPED_VALUE) {
@@ -403,16 +433,16 @@ export function TemplateForm({
             shortcut={Keyboard.Shortcut.Common.New}
             onAction={() => setFields((current) => [...current, createEmptyField()])}
           />
-          {fields.length > 0 ? (
+          {fields.length > 1 ? (
             <ActionPanel.Submenu
               title="Remove Field"
               icon={Icon.MinusCircle}
               shortcut={Keyboard.Shortcut.Common.Refresh}
             >
-              {fields.map((field, index) => (
+              {fields.slice(1).map((field, index) => (
                 <Action
                   key={field.id}
-                  title={field.name || `Field ${index + 1}`}
+                  title={field.name || `Field ${index + 2}`}
                   icon={Icon.Trash}
                   style={Action.Style.Destructive}
                   onAction={() => setFields((current) => current.filter((candidate) => candidate.id !== field.id))}
@@ -423,7 +453,7 @@ export function TemplateForm({
           {fields.length > 1 ? (
             <ActionPanel.Submenu title="Reorder Fields" icon={Icon.Filter} shortcut={{ modifiers: ["cmd"], key: "m" }}>
               {fields.flatMap((field, index) => [
-                ...(index > 0
+                ...(index > 1
                   ? [
                       <Action
                         key={`${field.id}-up`}
@@ -433,7 +463,7 @@ export function TemplateForm({
                       />,
                     ]
                   : []),
-                ...(index < fields.length - 1
+                ...(index > 0 && index < fields.length - 1
                   ? [
                       <Action
                         key={`${field.id}-down`}
@@ -506,7 +536,12 @@ export function TemplateForm({
         onChange={(value) => void changeMochiTemplate(value)}
       >
         <Form.Dropdown.Item title="No Template" value={NO_TEMPLATE_VALUE} icon={Icon.CircleDisabled} />
-        {mochiTemplateId !== NO_TEMPLATE_VALUE && !selectedLiveTemplate ? (
+        <Form.Dropdown.Item
+          title="Default Deck Template"
+          value={DEFAULT_DECK_TEMPLATE_VALUE}
+          icon={Icon.ArrowClockwise}
+        />
+        {!isCardBodyTemplateValue(mochiTemplateId) && !selectedLiveTemplate ? (
           <Form.Dropdown.Item
             title={selectedSnapshot?.name ?? initialSnapshot?.name ?? "Unavailable template"}
             value={mochiTemplateId}
@@ -517,6 +552,11 @@ export function TemplateForm({
           <Form.Dropdown.Item key={candidate.id} title={candidate.name} value={candidate.id} icon={Icon.Box} />
         ))}
       </Form.Dropdown>
+      {mochiTemplateId === NO_TEMPLATE_VALUE ? (
+        <Form.Description title="Template Behavior" text="Creates the card with an explicit null template." />
+      ) : mochiTemplateId === DEFAULT_DECK_TEMPLATE_VALUE ? (
+        <Form.Description title="Template Behavior" text="Uses the default template configured for this deck." />
+      ) : null}
       {catalog?.decks.error ? <Form.Description title="Mochi Deck" text={errorMessage(catalog.decks.error)} /> : null}
       {catalog?.mochiTemplates.error ? (
         <Form.Description title="Mochi Template" text={errorMessage(catalog.mochiTemplates.error)} />
@@ -526,8 +566,10 @@ export function TemplateForm({
       ) : null}
 
       <Form.Separator />
-      <Form.Description title="Input Fields" text="Add, remove, or reorder fields from the Actions menu." />
-      {fields.length === 0 ? <Form.Description title="Input" text="This template has no input fields." /> : null}
+      <Form.Description
+        title="Primary Field ★"
+        text="Required. Sets the card name in Mochi and cannot be removed or reordered."
+      />
       {fields.map((field, index) => (
         <InputFieldControls
           key={field.id}
@@ -540,7 +582,7 @@ export function TemplateForm({
       ))}
 
       <Form.Separator />
-      {mochiTemplateId === NO_TEMPLATE_VALUE ? (
+      {isCardBodyTemplateValue(mochiTemplateId) ? (
         <Form.TextArea
           id="cardBody"
           title="Card Body"
@@ -558,9 +600,9 @@ export function TemplateForm({
               key={target.id}
               target={target}
               fields={fields}
-              binding={bindings.find((binding) => binding.targetFieldId === target.id)}
+              binding={activeBindings.find((binding) => binding.targetFieldId === target.id)}
               errors={validationErrors}
-              bindingIndex={bindings.findIndex((binding) => binding.targetFieldId === target.id)}
+              bindingIndex={activeBindings.findIndex((binding) => binding.targetFieldId === target.id)}
               onChange={(value) => updateBinding(target.id, value)}
               onCustomChange={(value) => updateCustomMapping(target.id, value)}
             />
@@ -630,7 +672,8 @@ function InputFieldControls({
       {index > 0 ? <Form.Separator /> : null}
       <Form.TextField
         id={`field-${field.id}-name`}
-        title={`Field ${index + 1}`}
+        title={index === 0 ? "Field 1 ★" : `Field ${index + 1}`}
+        info={index === 0 ? "This is the card's primary field and cannot be removed." : undefined}
         placeholder="word"
         value={field.name}
         error={fieldError(errors, `fields.${index}.name`)}
@@ -648,9 +691,9 @@ function InputFieldControls({
       >
         <Form.Dropdown.Item title="Text" value="text" icon={Icon.Text} />
         <Form.Dropdown.Item title="Number" value="number" icon={Icon.Hashtag} />
-        <Form.Dropdown.Item title="Boolean" value="boolean" icon={Icon.CheckCircle} />
+        {index > 0 ? <Form.Dropdown.Item title="Boolean" value="boolean" icon={Icon.CheckCircle} /> : null}
       </Form.Dropdown>
-      {field.type !== "boolean" ? (
+      {field.type !== "boolean" && index > 0 ? (
         <Form.Checkbox
           id={`field-${field.id}-required`}
           label="Required"
@@ -689,6 +732,9 @@ function MappingControls({
 }) {
   const classification = classifyMochiField(target);
   const title = `${target.name} →`;
+  if (target.id === MOCHI_PRIMARY_FIELD_ID) {
+    return <Form.Description title={`${target.name} ★ →`} text={fields[0]?.name || "Primary field"} />;
+  }
   if (classification === "unsupported") {
     return <Form.Description title={title} text="Mapping is not supported for this field." />;
   }
@@ -752,11 +798,18 @@ function createOutput(
   bindings: readonly MochiFieldBinding[]
 ): CardOutput {
   if (templateId === NO_TEMPLATE_VALUE) {
-    return { kind: "card-body" };
+    return { kind: "card-body", templateMode: "none" };
+  }
+  if (templateId === DEFAULT_DECK_TEMPLATE_VALUE) {
+    return { kind: "card-body", templateMode: "deck-default" };
   }
   return snapshot
     ? { kind: "mochi-template", target: { status: "configured", template: snapshot, bindings } }
     : { kind: "mochi-template", target: { status: "needs-configuration", templateId } };
+}
+
+function isCardBodyTemplateValue(value: string): boolean {
+  return value === NO_TEMPLATE_VALUE || value === DEFAULT_DECK_TEMPLATE_VALUE;
 }
 
 function removeUnsupportedBindings(
