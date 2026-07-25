@@ -6,6 +6,7 @@ import type { CardTemplate } from "./domain/template";
 import { TemplateRepository } from "./storage/template-repository";
 
 const repository = new TemplateRepository();
+const dateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 export default function ManageTemplates() {
   const { data: templates = [], error, isLoading, revalidate } = usePromise(() => repository.list(), []);
@@ -54,14 +55,19 @@ export default function ManageTemplates() {
   const createAction = (
     <Action.Push
       title="Create Template"
-      icon={Icon.Plus}
+      icon={Icon.NewDocument}
       shortcut={Keyboard.Shortcut.Common.New}
       target={<TemplateForm repository={repository} onSaved={refresh} onDeleted={refresh} />}
     />
   );
 
   return (
-    <List isLoading={isLoading} navigationTitle="Manage Templates" searchBarPlaceholder="Search templates">
+    <List
+      isLoading={isLoading}
+      isShowingDetail
+      navigationTitle="Manage Templates"
+      searchBarPlaceholder="Search templates"
+    >
       {templates.length === 0 ? (
         <List.EmptyView
           icon={error ? Icon.Warning : Icon.Document}
@@ -73,16 +79,9 @@ export default function ManageTemplates() {
         templates.map((template) => (
           <List.Item
             key={template.id}
-            icon={Icon.Document}
+            icon={Icon.Snippets}
             title={template.name}
-            subtitle={template.deckName}
-            accessories={[
-              ...(template.output.kind === "mochi-template" && template.output.target.status === "needs-configuration"
-                ? [{ tag: { value: "Needs Mapping", color: "orange" } }]
-                : []),
-              { text: `${template.fields.length} field${template.fields.length === 1 ? "" : "s"}` },
-              ...(template.tags.length > 0 ? [{ tag: template.tags[0] }] : []),
-            ]}
+            detail={<TemplateDetail template={template} />}
             actions={
               <ActionPanel>
                 <Action.Push
@@ -115,6 +114,71 @@ export default function ManageTemplates() {
       )}
     </List>
   );
+}
+
+function TemplateDetail({ template }: { readonly template: CardTemplate }) {
+  return (
+    <List.Item.Detail
+      markdown={templateMarkdown(template)}
+      metadata={
+        <List.Item.Detail.Metadata>
+          <List.Item.Detail.Metadata.Label title="Deck" text={template.deckName} icon={Icon.Book} />
+          <List.Item.Detail.Metadata.Label title="Mochi Template" text={outputLabel(template)} icon={Icon.Box} />
+          {template.tags.length > 0 ? (
+            <List.Item.Detail.Metadata.TagList title="Tags">
+              {template.tags.map((tag) => (
+                <List.Item.Detail.Metadata.TagList.Item key={tag} text={tag} />
+              ))}
+            </List.Item.Detail.Metadata.TagList>
+          ) : null}
+          <List.Item.Detail.Metadata.Separator />
+          <List.Item.Detail.Metadata.Label title="Reverse Review" text={template.reviewReverse ? "Enabled" : "Off"} />
+          <List.Item.Detail.Metadata.Label title="Archived" text={template.archived ? "Yes" : "No"} />
+          <List.Item.Detail.Metadata.Label title="Updated" text={dateFormatter.format(new Date(template.updatedAt))} />
+        </List.Item.Detail.Metadata>
+      }
+    />
+  );
+}
+
+function templateMarkdown(template: CardTemplate): string {
+  const fields = template.fields.map((field) => `- **${field.name}** — \`${field.type}\``).join("\n");
+  const mappings =
+    template.output.kind === "mochi-template"
+      ? mochiTemplateMappingsMarkdown(template.output.target, template.fields)
+      : "";
+
+  return ["### Input Fields", "", fields, mappings].filter(Boolean).join("\n");
+}
+
+function mochiTemplateMappingsMarkdown(
+  target: Extract<CardTemplate["output"], { readonly kind: "mochi-template" }>["target"],
+  fields: CardTemplate["fields"]
+): string {
+  if (target.status === "needs-configuration") {
+    return "";
+  }
+
+  const sourceFields = new Map(fields.map((field) => [field.id, field.name]));
+  const mappings = target.bindings.map((binding) => {
+    const targetField = target.template.fields.find((field) => field.id === binding.targetFieldId);
+    const source =
+      binding.kind === "input"
+        ? (sourceFields.get(binding.sourceFieldId) ?? binding.sourceFieldId)
+        : "`<Custom Mapping>`";
+    return `- **${targetField?.name ?? binding.targetFieldId}** ← ${source}`;
+  });
+
+  return ["", "### Mochi Field Mappings", "", mappings.length > 0 ? mappings.join("\n") : "No fields mapped."].join(
+    "\n"
+  );
+}
+
+function outputLabel(template: CardTemplate): string {
+  if (template.output.kind === "card-body") {
+    return template.output.templateMode === "deck-default" ? "Default Deck Template" : "No Template";
+  }
+  return template.output.target.status === "configured" ? template.output.target.template.name : "Needs Mapping";
 }
 
 function errorMessage(error: unknown): string {
