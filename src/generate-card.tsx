@@ -27,13 +27,13 @@ export default function GenerateCard({ deckId }: GenerateCardProps = {}) {
       {matchingTemplates.length === 0 ? (
         <List.EmptyView
           icon={error ? Icon.Warning : Icon.Stars}
-          title={error ? "Could Not Load Templates" : deckId ? "No Templates for This Deck" : "No Templates Available"}
+          title={error ? "Couldn't Load Templates" : deckId ? "No Templates in This Deck" : "No Templates Yet"}
           description={
             error
               ? errorMessage(error)
               : deckId
-                ? "Create a template for this deck with the Manage Templates command, then return here."
-                : "Create a template with the Manage Templates command, then return here to generate a card."
+                ? "Create one for this deck in Manage Templates, then come back here."
+                : "Create one in Manage Templates, then come back here to make a card."
           }
         />
       ) : (

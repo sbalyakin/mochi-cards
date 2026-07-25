@@ -75,7 +75,7 @@ export function GenerationInputForm({
       const confirmed = await confirmAlert({
         icon: Icon.Warning,
         title: "Card Already Exists",
-        message: `A card named “${currentDuplicate.name}” already exists in this deck. Create another card?`,
+        message: `A card named "${currentDuplicate.name}" already exists in this deck. Create another one?`,
         primaryAction: { title: "Create Duplicate", style: Alert.ActionStyle.Destructive },
       });
       if (!confirmed) {
@@ -103,7 +103,7 @@ export function GenerationInputForm({
       <Form.Description title="Template" text={template.name} />
       <Form.Description title="Deck" text={template.deckName} />
       {template.fields.length === 0 ? (
-        <Form.Description title="Input" text="This template has no fields. Generate it as-is." />
+        <Form.Description title="Input" text="This template has no fields. Generate it as is." />
       ) : null}
       {warnings.map((warning, index) => (
         <Form.Description key={`${warning}-${index}`} title="Warning" text={warning} />
@@ -155,7 +155,7 @@ export function GenerationInputForm({
           <Fragment key={field.id}>
             {input}
             {index === 0 && isMochiTemplate && duplicate ? (
-              <Form.Description text={`⚠️ A card named “${duplicate.name}” already exists in this deck.`} />
+              <Form.Description text={`⚠️ A card named "${duplicate.name}" already exists in this deck.`} />
             ) : null}
           </Fragment>
         );

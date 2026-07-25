@@ -126,7 +126,7 @@ function validateInputFields(fields: readonly TemplateInputField[], errors: Temp
       errors.push({
         code: "field-id-duplicate",
         path: `fields.${index}.id`,
-        message: `Field ID “${id}” is duplicated`,
+        message: `Field ID "${id}" is duplicated`,
       });
     } else {
       ids.add(id);
@@ -142,13 +142,13 @@ function validateInputFields(fields: readonly TemplateInputField[], errors: Temp
       errors.push({
         code: "field-name-invalid",
         path: `fields.${index}.name`,
-        message: `Field “${name}” must start with a letter and contain only letters, digits, and _`,
+        message: `Field "${name}" must start with a letter and contain only letters, digits, and _`,
       });
     } else if (names.has(name)) {
       errors.push({
         code: "field-name-duplicate",
         path: `fields.${index}.name`,
-        message: `Field “${name}” is declared more than once`,
+        message: `Field "${name}" is declared more than once`,
       });
     } else {
       names.add(name);
@@ -202,7 +202,7 @@ function validateBindings(
       errors.push({
         code: "binding-target-unmappable",
         path,
-        message: `Mochi field “${target.name}” cannot be mapped`,
+        message: `Mochi field "${target.name}" cannot be mapped`,
       });
       return;
     }
@@ -219,7 +219,7 @@ function validateBindings(
         errors.push({
           code: "binding-type-incompatible",
           path,
-          message: `Input “${source.name}” has an incompatible type`,
+          message: `Input "${source.name}" has an incompatible type`,
         });
       }
       return;
@@ -229,7 +229,7 @@ function validateBindings(
       errors.push({
         code: "custom-mapping-required",
         path: `${path}.template`,
-        message: `Custom mapping for “${target.name}” is empty`,
+        message: `Custom mapping for "${target.name}" is empty`,
       });
       return;
     }

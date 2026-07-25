@@ -244,7 +244,7 @@ export function TemplateForm({
       }
       const draftError = validateDraft?.(draftToSave);
       if (draftError) {
-        await showToast({ style: Toast.Style.Failure, title: "Template Is Not Compatible", message: draftError });
+        await showToast({ style: Toast.Style.Failure, title: "Template Isn't Compatible", message: draftError });
         return;
       }
       if (!isCurrent()) {
@@ -342,7 +342,7 @@ export function TemplateForm({
     }
     const confirmed = await confirmAlert({
       icon: Icon.Trash,
-      title: `Delete “${template.name}”?`,
+      title: `Delete "${template.name}"?`,
       message: "This template cannot be recovered.",
       primaryAction: { title: "Delete", style: Alert.ActionStyle.Destructive },
     });
@@ -553,7 +553,7 @@ export function TemplateForm({
         ))}
       </Form.Dropdown>
       {mochiTemplateId === NO_TEMPLATE_VALUE ? (
-        <Form.Description title="Template Behavior" text="Creates the card with an explicit null template." />
+        <Form.Description title="Template Behavior" text="Creates a card without a Mochi template." />
       ) : mochiTemplateId === DEFAULT_DECK_TEMPLATE_VALUE ? (
         <Form.Description title="Template Behavior" text="Uses the default template configured for this deck." />
       ) : null}
@@ -567,7 +567,7 @@ export function TemplateForm({
 
       <Form.Separator />
       <Form.Description
-        title="Primary Field ★"
+        title="Primary Field"
         text="Required. Sets the card name in Mochi and cannot be removed or reordered."
       />
       {fields.map((field, index) => (
@@ -610,7 +610,7 @@ export function TemplateForm({
           {staleBindings.length > 0 ? (
             <Form.Description
               title="Stale Mappings"
-              text={`${staleBindings.length} mapping(s) reference removed Mochi fields. Remove them from Actions.`}
+              text={`${staleBindings.length} mapping(s) refer to removed Mochi fields. Remove them from Actions.`}
             />
           ) : null}
         </>
@@ -672,7 +672,7 @@ function InputFieldControls({
       {index > 0 ? <Form.Separator /> : null}
       <Form.TextField
         id={`field-${field.id}-name`}
-        title={index === 0 ? "Field 1 ★" : `Field ${index + 1}`}
+        title={index === 0 ? "Field 1 (Primary)" : `Field ${index + 1}`}
         info={index === 0 ? "This is the card's primary field and cannot be removed." : undefined}
         placeholder="word"
         value={field.name}
@@ -733,7 +733,7 @@ function MappingControls({
   const classification = classifyMochiField(target);
   const title = `${target.name} →`;
   if (target.id === MOCHI_PRIMARY_FIELD_ID) {
-    return <Form.Description title={`${target.name} ★ →`} text={fields[0]?.name || "Primary field"} />;
+    return <Form.Description title={`${target.name} (Primary)`} text={fields[0]?.name || "Primary field"} />;
   }
   if (classification === "unsupported") {
     return <Form.Description title={title} text="Mapping is not supported for this field." />;

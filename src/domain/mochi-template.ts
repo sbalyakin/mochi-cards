@@ -108,7 +108,7 @@ export function detectTemplateDrift(
         {
           code: "target-removed" as const,
           targetFieldId: binding.targetFieldId,
-          message: `Mapped Mochi field “${previous?.name ?? binding.targetFieldId}” was removed`,
+          message: `Mapped Mochi field "${previous?.name ?? binding.targetFieldId}" was removed`,
         },
       ];
     }
@@ -117,7 +117,7 @@ export function detectTemplateDrift(
         {
           code: "target-type-changed" as const,
           targetFieldId: binding.targetFieldId,
-          message: `Mapped Mochi field “${current.name}” changed type`,
+          message: `Mapped Mochi field "${current.name}" changed type`,
         },
       ];
     }

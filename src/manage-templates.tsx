@@ -31,7 +31,7 @@ export default function ManageTemplates() {
   async function deleteTemplate(template: CardTemplate): Promise<void> {
     const confirmed = await confirmAlert({
       icon: Icon.Trash,
-      title: `Delete “${template.name}”?`,
+      title: `Delete "${template.name}"?`,
       message: "This template cannot be recovered.",
       primaryAction: { title: "Delete", style: Alert.ActionStyle.Destructive },
     });
@@ -71,8 +71,8 @@ export default function ManageTemplates() {
       {templates.length === 0 ? (
         <List.EmptyView
           icon={error ? Icon.Warning : Icon.Document}
-          title={error ? "Could Not Load Templates" : "No Templates Yet"}
-          description={error ? errorMessage(error) : "Create a reusable Markdown template to generate your first card."}
+          title={error ? "Couldn't Load Templates" : "No Templates Yet"}
+          description={error ? errorMessage(error) : "Create a Markdown template to make your first card."}
           actions={<ActionPanel>{createAction}</ActionPanel>}
         />
       ) : (
@@ -142,7 +142,7 @@ function TemplateDetail({ template }: { readonly template: CardTemplate }) {
 }
 
 function templateMarkdown(template: CardTemplate): string {
-  const fields = template.fields.map((field) => `- **${field.name}** — \`${field.type}\``).join("\n");
+  const fields = template.fields.map((field) => `- **${field.name}** \`${field.type}\``).join("\n");
   const mappings =
     template.output.kind === "mochi-template"
       ? mochiTemplateMappingsMarkdown(template.output.target, template.fields)
@@ -165,7 +165,7 @@ function mochiTemplateMappingsMarkdown(
     const source =
       binding.kind === "input"
         ? (sourceFields.get(binding.sourceFieldId) ?? binding.sourceFieldId)
-        : "`<Custom Mapping>`";
+        : "<Custom Mapping>";
     return `- **${targetField?.name ?? binding.targetFieldId}** ← ${source}`;
   });
 

@@ -239,7 +239,7 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
             const confirmed = await confirmAlert({
               icon: Icon.Warning,
               title: "Card Already Exists",
-              message: `A card named “${duplicate.name}” already exists in this deck. Create another card?`,
+              message: `A card named "${duplicate.name}" already exists in this deck. Create another one?`,
               primaryAction: { title: "Create Duplicate", style: Alert.ActionStyle.Destructive },
             });
             if (controller.signal.aborted || !confirmed) {
@@ -311,7 +311,7 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
               icon: Icon.Warning,
               title: "Card Template Changed in Mochi",
               message: changesTemplate
-                ? `The card now uses a different template. Continuing will switch it to “${currentMochiTemplate.name}” and replace its fields.`
+                ? `The card now uses a different template. Continuing will switch it to "${currentMochiTemplate.name}" and replace its fields.`
                 : "The card now uses this edit session's template. Overwrite its latest fields?",
               primaryAction: {
                 title: changesTemplate ? "Switch Template and Overwrite" : "Overwrite New Template",
@@ -433,7 +433,7 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
             icon={session && fieldErrors.length > 0 ? Icon.Warning : session ? Icon.CheckCircle : Icon.Clock}
           />
           {duplicate ? (
-            <Detail.Metadata.Label title="Duplicate" text={`Card for “${duplicate.name}” already exists`} icon="⚠️" />
+            <Detail.Metadata.Label title="Duplicate" text={`A card for "${duplicate.name}" already exists`} icon="⚠️" />
           ) : null}
           {visibleTags.length > 0 ? (
             <Detail.Metadata.TagList title="Tags">

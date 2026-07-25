@@ -77,7 +77,7 @@ export function createGenerationTemplateDraft(
     if (classifyMochiField(field) === "mappable") {
       return true;
     }
-    warnings.push(`Skipped unsupported Mochi field “${field.name}” (${field.type}).`);
+    warnings.push(`Skipped unsupported Mochi field "${field.name}" (${field.type}).`);
     return false;
   });
   const fields = supported.map((field, index) => {
@@ -133,7 +133,7 @@ export function duplicateGenerationTemplateDraft(
     source.output.target.status !== "configured" ||
     source.output.target.template.id !== liveMochiTemplate.id
   ) {
-    throw new Error(`Generation Template is not configured for Mochi template “${liveMochiTemplate.name}”`);
+    throw new Error(`Generation Template is not configured for Mochi template "${liveMochiTemplate.name}"`);
   }
 
   const drift = detectTemplateDrift(source.output.target.template, liveMochiTemplate, source.output.target.bindings);
@@ -200,7 +200,7 @@ export function restoreInputValues(
       continue;
     }
     if (inverse?.kind === "conflict") {
-      warnings.push(`Conflicting Mochi fields map to “${field.name}”; value was not guessed.`);
+      warnings.push(`Conflicting Mochi fields map to "${field.name}"; value was not guessed.`);
     }
 
     const transferred =
@@ -212,11 +212,11 @@ export function restoreInputValues(
       continue;
     }
     if (transferred.kind === "conflict") {
-      warnings.push(`Multiple previous inputs match “${field.name}”; value was not transferred.`);
+      warnings.push(`Multiple previous inputs match "${field.name}"; value was not transferred.`);
     }
 
     values[field.id] = field.type === "boolean" ? false : "";
-    warnings.push(`No saved value was found for “${field.name}”.`);
+    warnings.push(`No saved value was found for "${field.name}".`);
   }
 
   return { values, warnings };

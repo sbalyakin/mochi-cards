@@ -87,7 +87,7 @@ describe("createGenerationTemplateDraft", () => {
         },
       },
     });
-    expect(result.warnings).toEqual(["Skipped unsupported Mochi field “Sketch” (drawing)."]);
+    expect(result.warnings).toEqual(['Skipped unsupported Mochi field "Sketch" (drawing).']);
   });
 });
 
@@ -120,7 +120,7 @@ describe("duplicateGenerationTemplateDraft", () => {
 
     expect(() =>
       duplicateGenerationTemplateDraft(template({ deckId: "deck-2" }), { id: "deck-1", name: "Deck" }, live)
-    ).toThrow("Mapped Mochi field “Front” was removed");
+    ).toThrow('Mapped Mochi field "Front" was removed');
   });
 });
 
@@ -190,8 +190,8 @@ describe("restoreInputValues", () => {
     ).toEqual({
       values: { input: "" },
       warnings: [
-        "Conflicting Mochi fields map to “Word”; value was not guessed.",
-        "No saved value was found for “Word”.",
+        'Conflicting Mochi fields map to "Word"; value was not guessed.',
+        'No saved value was found for "Word".',
       ],
     });
   });

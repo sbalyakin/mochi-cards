@@ -97,12 +97,12 @@ AI fields are processed independently, in document order. Variables are substitu
 
 After generation you can:
 
-- **Add to Mochi** — send the active Card Body or mapped Mochi field values to your deck
-- **Edit Markdown / Edit Field Values** — tweak generated output by hand (this disables regeneration until you restore the generated version)
-- **Regenerate All AI Fields** — rerun every `<ai>` block
-- **Regenerate AI Field** — rerun a single block
-- **Back to Input** — change variable values (this invalidates all AI results)
-- **Copy Markdown** and **Save as Markdown File** — available for Card Body output
+- **Add to Mochi**: send the active Card Body or mapped Mochi field values to your deck
+- **Edit Markdown / Edit Field Values**: tweak generated output by hand. This disables regeneration until you restore the generated version.
+- **Regenerate All AI Fields**: rerun every `<ai>` block
+- **Regenerate AI Field**: rerun a single block
+- **Back to Input**: change variable values. This invalidates all AI results.
+- **Copy Markdown** and **Save as Markdown File**: available for Card Body output
 
 When editing an existing card, the primary preview action is **Update Card in Mochi**. The input form also lets you edit or choose a Generation Template and switch to another live Mochi template. Switching templates only changes the local edit session; Mochi is not updated until the preview is confirmed.
 
@@ -177,9 +177,9 @@ Not supported: conditionals, loops, filters, default values, nested `<ai>` tags,
 
 ## Commands
 
-- **Create Card** — pick a template and create a card
-- **Manage Templates** — create, edit, duplicate, and delete templates
-- **Browse Cards** — choose visible decks, browse cards, and edit cards backed by a Mochi template
+- **Create Card**: pick a template and create a card
+- **Manage Templates**: create, edit, duplicate, and delete templates
+- **Browse Cards**: choose visible decks, browse cards, and edit cards backed by a Mochi template
 
 Browse Cards caches the Mochi deck and template catalog locally. Use **Reload Decks** to refresh it explicitly.
 Card lists are also cached per deck: cached cards appear immediately, then refresh from Mochi in the background and

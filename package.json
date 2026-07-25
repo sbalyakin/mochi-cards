@@ -3,7 +3,7 @@
   "name": "mochi-cards",
   "version": "0.1.0",
   "title": "Mochi Cards",
-  "description": "Generate Mochi flashcards from reusable Markdown templates and AI fields.",
+  "description": "Create Mochi flashcards from reusable Markdown templates with optional AI fields.",
   "icon": "extension-icon.png",
   "author": "sergey_balyakin",
   "license": "MIT",

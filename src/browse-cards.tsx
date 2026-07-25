@@ -426,7 +426,7 @@ function CardList({
 
     const confirmed = await confirmAlert({
       title: "Delete Card?",
-      message: `Permanently delete “${cardTitle(card)}” from Mochi? This cannot be undone.`,
+      message: `Permanently delete "${cardTitle(card)}" from Mochi? This cannot be undone.`,
       primaryAction: { title: "Delete Card", style: Alert.ActionStyle.Destructive },
     });
     if (!confirmed) {
