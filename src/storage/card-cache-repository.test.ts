@@ -7,7 +7,7 @@ vi.mock("@raycast/api", () => ({
   },
 }));
 
-import { CardCacheRepository, type CardCacheStorage } from "./card-cache-repository";
+import { CardCacheRepository, type CardCacheStorage, upsertCreatedCardBestEffort } from "./card-cache-repository";
 
 class MemoryStorage implements CardCacheStorage {
   readonly values = new Map<string, string>();
@@ -57,6 +57,31 @@ describe("CardCacheRepository", () => {
       { id: "card-1", name: "Alpha" },
       { id: "card-2", name: "Beta" },
     ]);
+  });
+
+  it("adds the authoritative name from a create response", () => {
+    upsertCreatedCardBestEffort(repository, "deck-1", { id: "card-1", name: "Created card" });
+
+    expect(repository.get("deck-1")).toEqual([{ id: "card-1", name: "Created card" }]);
+  });
+
+  it("skips incomplete create responses", () => {
+    upsertCreatedCardBestEffort(repository, "deck-1", { id: "card-1" });
+    upsertCreatedCardBestEffort(repository, "deck-1", { name: "Created card" });
+
+    expect(repository.get("deck-1")).toEqual([]);
+  });
+
+  it("does not turn a cache failure into a failed create", () => {
+    const brokenCache = {
+      upsert: vi.fn(() => {
+        throw new Error("Cache unavailable");
+      }),
+    };
+
+    expect(() =>
+      upsertCreatedCardBestEffort(brokenCache, "deck-1", { id: "card-1", name: "Created card" })
+    ).not.toThrow();
   });
 
   it("ignores corrupted cache data", () => {

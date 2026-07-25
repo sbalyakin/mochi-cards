@@ -48,9 +48,11 @@ The template form loads decks from `GET https://app.mochi.cards/api/decks` and M
 
 Inputs can be text, number, or boolean. Declare them in the template settings, then reference their names with placeholders in Card Body or custom mappings:
 
-The first input is the card's primary field and duplicate-detection key. It is always required, accepts text or numbers, and cannot be removed or reordered. When a specific Mochi template is selected, this input is always mapped to its `name` field.
+The first input is the card's primary field. It is always required, accepts text or numbers, and cannot be removed or reordered. When a specific Mochi template is selected, this input is always mapped to its `name` field.
 
-While the primary field is being filled, Create Card compares it with the cached card names for the selected deck. A match is shown below the field, and **Generate Preview** asks for confirmation before continuing. Confirming is the final duplicate check; saving the preview does not make another Mochi request for it.
+For a specific Mochi template, Create Card compares the primary field with cached card names while it is being filled. A match is shown below the field, and **Generate Preview** asks for confirmation before continuing.
+
+For **No Template** and **Default Deck Template**, Mochi derives the card name from the rendered Card Body. Before saving the preview, Create Card derives the same name locally from the final Markdown and warns about a cached match. This is only a heuristic: Mochi's authoritative name from the create response is used to update the local cache. The check runs before preview for the mapped-name mode and immediately before saving for Card Body.
 
 ```markdown
 # <<word>>

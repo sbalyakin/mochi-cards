@@ -35,6 +35,18 @@ describe("MochiClient", () => {
     });
   });
 
+  it.each([
+    ["id and name", JSON.stringify({ id: "card-1", name: "Created card" }), { id: "card-1", name: "Created card" }],
+    ["a null name", JSON.stringify({ id: "card-1", name: null }), { id: "card-1", name: null }],
+    ["a missing name", JSON.stringify({ id: "card-1" }), { id: "card-1" }],
+    ["an empty response", "", {}],
+    ["a malformed response", "not json", {}],
+  ])("parses a create response with %s", async (_description, responseText, expected) => {
+    const client = new MochiClient("secret-key", async () => new Response(responseText, { status: 201 }));
+
+    await expect(client.createCard(createRequest())).resolves.toEqual(expected);
+  });
+
   it("posts a null template ID when no template is selected", async () => {
     const fetch = vi.fn<FetchLike>().mockResolvedValue(new Response("", { status: 201 }));
     const client = new MochiClient("secret-key", fetch);

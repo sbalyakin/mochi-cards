@@ -1,7 +1,7 @@
 import { Action, ActionPanel, Alert, confirmAlert, Form, Icon, showToast, Toast, useNavigation } from "@raycast/api";
 import { Fragment, useState, type ReactNode } from "react";
 
-import { findDuplicateCardByName } from "../domain/card-duplicates";
+import { findDuplicateCardByName, selectDuplicateCandidate } from "../domain/card-duplicates";
 import type { CardTemplate, FieldValues } from "../domain/template";
 import { CardCacheRepository } from "../storage/card-cache-repository";
 import { CardPreview } from "./card-preview";
@@ -34,12 +34,11 @@ export function GenerationInputForm({
     );
   const [values, setValues] = useState<FieldValues>(emptyValues);
   const [errors, setErrors] = useState<Readonly<Record<string, string>>>({});
-  const primaryField = template.fields[0];
-  const primaryValue = primaryField ? values[primaryField.id] : undefined;
-  const duplicate =
-    mode === "create" && typeof primaryValue === "string"
-      ? findDuplicateCardByName(cardCacheRepository.get(template.deckId), primaryValue)
-      : undefined;
+  const isMochiTemplate = template.output.kind === "mochi-template";
+  const duplicateCandidate = selectDuplicateCandidate(template, values, mode);
+  const duplicate = duplicateCandidate
+    ? findDuplicateCardByName(cardCacheRepository.get(template.deckId), duplicateCandidate)
+    : undefined;
   function resetInput(): void {
     setValues(emptyValues());
     setErrors({});
@@ -68,11 +67,10 @@ export function GenerationInputForm({
       return;
     }
 
-    const currentPrimaryValue = primaryField ? values[primaryField.id] : undefined;
-    const currentDuplicate =
-      mode === "create" && typeof currentPrimaryValue === "string"
-        ? findDuplicateCardByName(cardCacheRepository.get(template.deckId), currentPrimaryValue)
-        : undefined;
+    const currentDuplicateCandidate = selectDuplicateCandidate(template, values, mode);
+    const currentDuplicate = currentDuplicateCandidate
+      ? findDuplicateCardByName(cardCacheRepository.get(template.deckId), currentDuplicateCandidate)
+      : undefined;
     if (currentDuplicate) {
       const confirmed = await confirmAlert({
         icon: Icon.Warning,
@@ -114,7 +112,8 @@ export function GenerationInputForm({
       ))}
       {template.fields.map((field, index) => {
         const title = index === 0 ? `${field.name} ★` : field.name;
-        const info = index === 0 ? "This is the card's primary field and sets its name in Mochi." : undefined;
+        const info =
+          index === 0 && isMochiTemplate ? "This is the card's primary field and sets its name in Mochi." : undefined;
         if (field.type === "boolean") {
           return (
             <Form.Checkbox
@@ -157,7 +156,7 @@ export function GenerationInputForm({
         return (
           <Fragment key={field.id}>
             {input}
-            {index === 0 && duplicate ? (
+            {index === 0 && isMochiTemplate && duplicate ? (
               <Form.Description text={`⚠️ A card named “${duplicate.name}” already exists in this deck.`} />
             ) : null}
           </Fragment>

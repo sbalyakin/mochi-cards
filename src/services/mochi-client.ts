@@ -34,6 +34,7 @@ export function isMochiDeckNotFoundError(error: unknown): boolean {
 
 export type CreatedMochiCard = {
   readonly id?: string;
+  readonly name?: string | null;
 };
 
 export type MochiDeck = {
@@ -449,8 +450,10 @@ function parseCreatedCard(responseText: string): CreatedMochiCard {
 
   try {
     const value: unknown = JSON.parse(responseText);
-    if (isRecord(value) && typeof value.id === "string") {
-      return { id: value.id };
+    if (isRecord(value)) {
+      const id = typeof value.id === "string" ? value.id : undefined;
+      const name = value.name === null || typeof value.name === "string" ? value.name : undefined;
+      return { ...(id === undefined ? {} : { id }), ...(name === undefined ? {} : { name }) };
     }
   } catch {
     return {};

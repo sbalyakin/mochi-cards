@@ -15,6 +15,11 @@ export interface CardCacheStorage {
   setItem(key: string, value: string): void;
 }
 
+export type CreatedCardIdentity = {
+  readonly id?: string;
+  readonly name?: string | null;
+};
+
 export class CardCacheRepository {
   private readonly storage: CardCacheStorage;
 
@@ -46,6 +51,21 @@ export class CardCacheRepository {
 
   upsert(deckId: string, card: NamedCard): void {
     this.replace(deckId, [...this.get(deckId).filter((candidate) => candidate.id !== card.id), card]);
+  }
+}
+
+export function upsertCreatedCardBestEffort(
+  cache: Pick<CardCacheRepository, "upsert">,
+  deckId: string,
+  card: CreatedCardIdentity
+): void {
+  if (card.id === undefined || card.name === undefined) {
+    return;
+  }
+  try {
+    cache.upsert(deckId, { id: card.id, name: card.name });
+  } catch {
+    // Card creation has already succeeded. Cache updates must never turn it into a failed operation.
   }
 }
 

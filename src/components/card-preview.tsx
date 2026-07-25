@@ -12,6 +12,7 @@ import {
 } from "@raycast/api";
 import { useEffect, useRef, useState } from "react";
 
+import { deriveMochiCardName, findDuplicateCardByName, selectDuplicateCandidate } from "../domain/card-duplicates";
 import {
   editMarkdown,
   generateSession,
@@ -41,7 +42,7 @@ import {
   type MochiTemplate,
 } from "../services/mochi-client";
 import { RaycastAiClient } from "../services/raycast-ai-client";
-import { CardCacheRepository } from "../storage/card-cache-repository";
+import { CardCacheRepository, upsertCreatedCardBestEffort } from "../storage/card-cache-repository";
 import { CardGenerationContextRepository } from "../storage/card-generation-context-repository";
 import { MarkdownEditor } from "./markdown-editor";
 import { MochiValuesEditor } from "./mochi-values-editor";
@@ -87,6 +88,11 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
     ? (session.mode === "generated" ? session.output.kind : session.output.kind) === "card-body"
     : template.output.kind === "card-body";
   const ready = session !== undefined && isSessionReady(session) && (!isCardBodySession || markdown.trim().length > 0);
+  const duplicateCandidate =
+    session && mode.kind === "create" ? selectDuplicateCandidate(template, values, "create", markdown) : undefined;
+  const duplicate = duplicateCandidate
+    ? findDuplicateCardByName(cardCacheRepository.get(template.deckId), duplicateCandidate)
+    : undefined;
 
   useEffect(() => {
     const logProgress = (progress: GenerationProgress): void => {
@@ -226,6 +232,21 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
       const mochiOutput = getMochiOutput(session);
       const client = new MochiClient(mochiApiKey);
       if (mode.kind === "create") {
+        if (!mochiOutput) {
+          const candidateName = deriveMochiCardName(markdown);
+          const duplicate = findDuplicateCardByName(cardCacheRepository.get(template.deckId), candidateName);
+          if (duplicate) {
+            const confirmed = await confirmAlert({
+              icon: Icon.Warning,
+              title: "Card Already Exists",
+              message: `A card named “${duplicate.name}” already exists in this deck. Create another card?`,
+              primaryAction: { title: "Create Duplicate", style: Alert.ActionStyle.Destructive },
+            });
+            if (controller.signal.aborted || !confirmed) {
+              return;
+            }
+          }
+        }
         const card = await client.createCard(
           {
             deckId: template.deckId,
@@ -243,9 +264,7 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
           title: "Card added to Mochi",
           message: card.id ? `Card ID: ${card.id}` : template.name,
         });
-        if (card.id) {
-          await cacheCreatedCardBestEffort(client, card.id, controller.signal);
-        }
+        await cacheCreatedCardBestEffort(client, template.deckId, card, controller.signal);
         if (card.id && mochiOutput) {
           await saveContextWithWarning(card.id, template, values, mochiOutput.templateId, controller.signal);
         } else if (mochiOutput) {
@@ -413,6 +432,9 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
             text={status}
             icon={session && fieldErrors.length > 0 ? Icon.Warning : session ? Icon.CheckCircle : Icon.Clock}
           />
+          {duplicate ? (
+            <Detail.Metadata.Label title="Duplicate" text={`Card for “${duplicate.name}” already exists`} icon="⚠️" />
+          ) : null}
           {visibleTags.length > 0 ? (
             <Detail.Metadata.TagList title="Tags">
               {visibleTags.map((tag) => (
@@ -561,14 +583,26 @@ function renderMochiTemplatePreview(
   return cardMarkdown(card, template);
 }
 
-async function cacheCreatedCardBestEffort(client: MochiClient, cardId: string, signal: AbortSignal): Promise<void> {
+async function cacheCreatedCardBestEffort(
+  client: MochiClient,
+  deckId: string,
+  card: { readonly id?: string; readonly name?: string | null },
+  signal: AbortSignal
+): Promise<void> {
+  if (card.id === undefined) {
+    return;
+  }
+  if (card.name !== undefined) {
+    upsertCreatedCardBestEffort(cardCacheRepository, deckId, card);
+    return;
+  }
   try {
-    const createdCard = await client.getCard(cardId, signal);
+    const createdCard = await client.getCard(card.id, signal);
     if (!signal.aborted) {
-      cardCacheRepository.upsert(createdCard.deckId, { id: createdCard.id, name: createdCard.name });
+      upsertCreatedCardBestEffort(cardCacheRepository, deckId, { id: createdCard.id, name: createdCard.name });
     }
   } catch {
-    // Card creation has already succeeded. Cache refresh must never turn it into a failed operation.
+    // Card creation has already succeeded. Cache updates must never turn it into a failed operation.
   }
 }
 
