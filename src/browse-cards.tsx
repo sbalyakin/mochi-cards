@@ -566,13 +566,13 @@ function CardList({
                 <>
                   <Action.Push
                     title="Create Card"
-                    icon={Icon.Plus}
+                    icon={Icon.NewDocument}
                     shortcut={Keyboard.Shortcut.Common.New}
                     target={<GenerateCard deckId={deck.id} />}
                   />
                   <Action
                     title="Reload Cards"
-                    icon={Icon.ArrowClockwise}
+                    icon={Icon.RotateClockwise}
                     shortcut={Keyboard.Shortcut.Common.Refresh}
                     onAction={reloadCards}
                   />
@@ -595,7 +595,7 @@ function CardList({
                 <ActionPanel>
                   <Action.Push
                     title="Open Card"
-                    icon={Icon.Document}
+                    icon={Icon.ArrowNe}
                     shortcut={Keyboard.Shortcut.Common.Open}
                     target={
                       <CardView
@@ -624,7 +624,7 @@ function CardList({
                   ) : null}
                   <Action.Push
                     title="Create Card"
-                    icon={Icon.Plus}
+                    icon={Icon.NewDocument}
                     shortcut={Keyboard.Shortcut.Common.New}
                     target={<GenerateCard deckId={deck.id} />}
                   />
@@ -641,12 +641,12 @@ function CardList({
                   />
                   <Action
                     title={isSortReversed ? "Use Default Sort Order" : "Reverse Sort Order"}
-                    icon={isSortReversed ? Icon.ArrowUp : Icon.ArrowDown}
+                    icon={Icon.ChevronUpDown}
                     onAction={() => setIsSortReversed((reversed) => !reversed)}
                   />
                   <Action
                     title="Reload Cards"
-                    icon={Icon.ArrowClockwise}
+                    icon={Icon.RotateClockwise}
                     shortcut={Keyboard.Shortcut.Common.Refresh}
                     onAction={reloadCards}
                   />
@@ -784,7 +784,7 @@ function CardView({
           />
           <Action
             title="Reload Card"
-            icon={Icon.ArrowClockwise}
+            icon={Icon.RotateClockwise}
             shortcut={Keyboard.Shortcut.Common.Refresh}
             onAction={reloadCard}
           />
