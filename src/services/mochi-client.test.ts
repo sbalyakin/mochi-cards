@@ -378,6 +378,23 @@ describe("MochiClient", () => {
     await expect(client.getCard("card")).resolves.toMatchObject({ fields: [{ id: "active", value: true }] });
   });
 
+  it("parses numeric card field values", async () => {
+    const client = new MochiClient(
+      "key",
+      async () =>
+        new Response(
+          JSON.stringify({
+            id: "card",
+            "deck-id": "deck",
+            content: "",
+            fields: { count: { id: "count", value: 123 } },
+          })
+        )
+    );
+
+    await expect(client.getCard("card")).resolves.toMatchObject({ fields: [{ id: "count", value: "123" }] });
+  });
+
   it("rejects invalid deck responses", async () => {
     const client = new MochiClient("key", async () => new Response(JSON.stringify({ docs: "invalid" })));
 

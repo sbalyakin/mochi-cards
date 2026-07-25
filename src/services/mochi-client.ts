@@ -558,11 +558,11 @@ function parseCardFields(value: unknown): readonly MochiCardField[] {
     if (
       !isRecord(field) ||
       typeof field.id !== "string" ||
-      (typeof field.value !== "string" && typeof field.value !== "boolean")
+      (typeof field.value !== "string" && typeof field.value !== "boolean" && typeof field.value !== "number")
     ) {
       return [];
     }
-    return [{ id: field.id, value: field.value }];
+    return [{ id: field.id, value: typeof field.value === "number" ? String(field.value) : field.value }];
   });
 }
 
