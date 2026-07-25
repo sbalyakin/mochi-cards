@@ -79,7 +79,7 @@ function findMochiFencedName(
     (line, index) => index > openingIndex && parseMochiFence(line)?.marker === openingFence.marker
   );
 
-  // Mochi closes ```` with ``` and retains extra closing markers in the name. This intentionally differs from CommonMark.
+  // Mochi lets ``` close a ```` fence and keeps the extra marker in the name, unlike CommonMark.
   if (closingIndex < 0) {
     return openingFence.marker;
   }

@@ -602,7 +602,7 @@ async function cacheCreatedCardBestEffort(
       upsertCreatedCardBestEffort(cardCacheRepository, deckId, { id: createdCard.id, name: createdCard.name });
     }
   } catch {
-    // Card creation has already succeeded. Cache updates must never turn it into a failed operation.
+    // The card already exists. A cache write must not fail the operation.
   }
 }
 
