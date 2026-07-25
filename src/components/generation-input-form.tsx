@@ -95,15 +95,13 @@ export function GenerationInputForm({
       navigationTitle={mode === "update" ? `Edit ${template.name}` : template.name}
       actions={
         <ActionPanel>
-          <Action.SubmitForm title="Generate Preview" icon={Icon.Stars} onSubmit={generate} />
+          <Action.SubmitForm title="Generate Card Preview" icon={Icon.Stars} onSubmit={generate} />
           {secondaryActions}
         </ActionPanel>
       }
     >
-      <Form.Description
-        title="Template"
-        text={`${template.name} · ${template.fields.length} field${template.fields.length === 1 ? "" : "s"}`}
-      />
+      <Form.Description title="Template" text={template.name} />
+      <Form.Description title="Deck" text={template.deckName} />
       {template.fields.length === 0 ? (
         <Form.Description title="Input" text="This template has no fields. Generate it as-is." />
       ) : null}
