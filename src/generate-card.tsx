@@ -2,7 +2,7 @@ import { Action, ActionPanel, Icon, List } from "@raycast/api";
 import { usePromise } from "@raycast/utils";
 
 import { GenerationInputForm } from "./components/generation-input-form";
-import { parseTemplate } from "./domain/template-parser";
+import { TemplateForm } from "./components/template-form";
 import { TemplateRepository } from "./storage/template-repository";
 
 const repository = new TemplateRepository();
@@ -12,15 +12,18 @@ type GenerateCardProps = {
 };
 
 export default function GenerateCard({ deckId }: GenerateCardProps = {}) {
-  const { data: templates = [], error, isLoading } = usePromise(() => repository.list(), []);
+  const { data: templates = [], error, isLoading, revalidate } = usePromise(() => repository.list(), []);
   const matchingTemplates = deckId ? templates.filter((template) => template.deckId === deckId) : templates;
+  const refresh = async (): Promise<void> => {
+    await revalidate();
+  };
 
   if (deckId && !isLoading && !error && matchingTemplates.length === 1) {
     return <GenerationInputForm template={matchingTemplates[0]} />;
   }
 
   return (
-    <List isLoading={isLoading} navigationTitle="Create Card" searchBarPlaceholder="Choose a template">
+    <List isLoading={isLoading} navigationTitle="Create Card" searchBarPlaceholder="Choose a template to create a card">
       {matchingTemplates.length === 0 ? (
         <List.EmptyView
           icon={error ? Icon.Warning : Icon.Stars}
@@ -36,35 +39,32 @@ export default function GenerateCard({ deckId }: GenerateCardProps = {}) {
       ) : (
         matchingTemplates.map((template) => {
           const canGenerate = template.output.kind === "card-body" || template.output.target.status === "configured";
-          const aiFieldCount =
-            template.output.kind === "card-body"
-              ? parseTemplate(template.cardBody).filter((segment) => segment.kind === "ai").length
-              : template.output.target.status === "configured"
-                ? template.output.target.bindings
-                    .filter((binding) => binding.kind === "custom")
-                    .flatMap((binding) => parseTemplate(binding.template))
-                    .filter((segment) => segment.kind === "ai").length
-                : 0;
           return (
             <List.Item
               key={template.id}
               icon={Icon.Snippets}
               title={template.name}
-              subtitle={template.deckName}
               accessories={[
                 ...(!canGenerate ? [{ tag: { value: "Needs Mapping", color: "orange" } }] : []),
-                { text: `${template.fields.length} input${template.fields.length === 1 ? "" : "s"}` },
-                { text: `${aiFieldCount} AI field${aiFieldCount === 1 ? "" : "s"}` },
+                { icon: Icon.Book, text: template.deckName },
               ]}
               actions={
                 <ActionPanel>
                   {canGenerate ? (
                     <Action.Push
-                      title="Use Template"
-                      icon={Icon.ArrowRight}
+                      title="Create Card Using Template"
+                      icon={Icon.NewDocument}
                       target={<GenerationInputForm template={template} />}
                     />
                   ) : null}
+                  <Action.Push
+                    title="Edit Template"
+                    icon={Icon.Pencil}
+                    shortcut={{ modifiers: ["cmd"], key: "t" }}
+                    target={
+                      <TemplateForm repository={repository} template={template} onSaved={refresh} onDeleted={refresh} />
+                    }
+                  />
                 </ActionPanel>
               }
             />
