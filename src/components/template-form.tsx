@@ -536,11 +536,7 @@ export function TemplateForm({
         onChange={(value) => void changeMochiTemplate(value)}
       >
         <Form.Dropdown.Item title="No Template" value={NO_TEMPLATE_VALUE} icon={Icon.CircleDisabled} />
-        <Form.Dropdown.Item
-          title="Default Deck Template"
-          value={DEFAULT_DECK_TEMPLATE_VALUE}
-          icon={Icon.ArrowClockwise}
-        />
+        <Form.Dropdown.Item title="Default Deck Template" value={DEFAULT_DECK_TEMPLATE_VALUE} icon={Icon.Link} />
         {!isCardBodyTemplateValue(mochiTemplateId) && !selectedLiveTemplate ? (
           <Form.Dropdown.Item
             title={selectedSnapshot?.name ?? initialSnapshot?.name ?? "Unavailable template"}
@@ -672,7 +668,7 @@ function InputFieldControls({
       {index > 0 ? <Form.Separator /> : null}
       <Form.TextField
         id={`field-${field.id}-name`}
-        title={index === 0 ? "Field 1 (Primary)" : `Field ${index + 1}`}
+        title={index === 0 ? "Field 1 (primary)" : `Field ${index + 1}`}
         info={index === 0 ? "This is the card's primary field and cannot be removed." : undefined}
         placeholder="word"
         value={field.name}
@@ -731,9 +727,11 @@ function MappingControls({
   readonly onCustomChange: (value: string) => void;
 }) {
   const classification = classifyMochiField(target);
-  const title = `${target.name} →`;
+  const title = `${target.name} ←`;
   if (target.id === MOCHI_PRIMARY_FIELD_ID) {
-    return <Form.Description title={`${target.name} (Primary)`} text={fields[0]?.name || "Primary field"} />;
+    return (
+      <Form.Description title={`${target.name} (primary) ←`} text={`${fields[0]?.name || "Primary field"} (primary)`} />
+    );
   }
   if (classification === "unsupported") {
     return <Form.Description title={title} text="Mapping is not supported for this field." />;
@@ -780,7 +778,7 @@ function MappingControls({
       {binding?.kind === "custom" ? (
         <Form.TextArea
           id={`mapping-${target.id}-custom`}
-          title={`${target.name} Custom Mapping`}
+          title="Custom Mapping"
           placeholder={`<<${fields[0]?.name ?? "field"}>>`}
           info="Use <<field>> placeholders and <ai>...</ai> fields"
           value={binding.template}
