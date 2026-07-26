@@ -124,6 +124,18 @@ export default function BrowseCards() {
     setCatalogRevision((revision) => revision + 1);
   }
 
+  function rememberMochiTemplates(updatedTemplates: readonly MochiTemplate[]): void {
+    const currentCatalog = mochiCatalogRepository.get();
+    if (!currentCatalog) {
+      return;
+    }
+    mochiCatalogRepository.replace({
+      ...currentCatalog,
+      templates: [...updatedTemplates].sort((left, right) => left.name.localeCompare(right.name)),
+    });
+    setCatalogRevision((revision) => revision + 1);
+  }
+
   function rememberCardCount(deckId: string, count: number): void {
     const currentCatalog = mochiCatalogRepository.get();
     if (!currentCatalog || currentCatalog.cardCounts[deckId] === count) {
@@ -224,6 +236,7 @@ export default function BrowseCards() {
                       templates={templates}
                       onDeckNotFound={invalidateCatalog}
                       onMochiTemplateUpdated={rememberMochiTemplate}
+                      onMochiTemplatesReloaded={rememberMochiTemplates}
                       onCardCountUpdated={rememberCardCount}
                     />
                   }
@@ -238,6 +251,7 @@ export default function BrowseCards() {
                       templates={templates}
                       onDeckNotFound={invalidateCatalog}
                       onMochiTemplateUpdated={rememberMochiTemplate}
+                      onMochiTemplatesReloaded={rememberMochiTemplates}
                       onCardCountUpdated={rememberCardCount}
                     />
                   }
@@ -351,6 +365,7 @@ type CardListProps = {
   readonly templates: readonly MochiCatalogTemplate[];
   readonly onDeckNotFound: () => void;
   readonly onMochiTemplateUpdated: (template: MochiTemplate) => void;
+  readonly onMochiTemplatesReloaded: (templates: readonly MochiTemplate[]) => void;
   readonly onCardCountUpdated: (deckId: string, count: number) => void;
 };
 
@@ -360,6 +375,7 @@ function CardList({
   templates,
   onDeckNotFound,
   onMochiTemplateUpdated,
+  onMochiTemplatesReloaded,
   onCardCountUpdated,
 }: CardListProps) {
   const { pop } = useNavigation();
@@ -369,8 +385,13 @@ function CardList({
   const [filter, setFilter] = useState<CardFilter>("all");
   const [isShowingMetadata, setIsShowingMetadata] = useState(true);
   const hasCardsRef = useRef(false);
+  const {
+    data: loadedTemplates,
+    isLoading: isLoadingTemplates,
+    revalidate: revalidateTemplates,
+  } = useTemplateCatalogRefresh(client, onMochiTemplatesReloaded);
   const { availableTemplates, templatesById, rememberUpdatedTemplate } = useTemplateOverrides(
-    templates,
+    loadedTemplates ?? templates,
     onMochiTemplateUpdated
   );
   const { isDeletingCard, deleteCard } = useCardDeletion(client);
@@ -426,8 +447,8 @@ function CardList({
 
   async function reloadCards(): Promise<void> {
     try {
-      await revalidate();
-      await showToast({ style: Toast.Style.Success, title: "Cards Reloaded" });
+      await Promise.all([revalidate(), revalidateTemplates()]);
+      await showToast({ style: Toast.Style.Success, title: "Cards and Templates Reloaded" });
     } catch (error: unknown) {
       await showToast({
         style: Toast.Style.Failure,
@@ -439,7 +460,7 @@ function CardList({
 
   return (
     <List
-      isLoading={isLoading || isDeletingCard}
+      isLoading={isLoading || isLoadingTemplates || isDeletingCard}
       isShowingDetail
       navigationTitle={
         filter === "all" ? deck.name : `${deck.name} · ${filter === "reviewed" ? "Reviewed" : "Not Reviewed"}`
@@ -595,13 +616,19 @@ function DuplicateCardList({
   templates,
   onDeckNotFound,
   onMochiTemplateUpdated,
+  onMochiTemplatesReloaded,
   onCardCountUpdated,
 }: CardListProps) {
   const { pop } = useNavigation();
   const abortable = useRef<AbortController | undefined>(undefined);
   const hasCardsRef = useRef(false);
+  const {
+    data: loadedTemplates,
+    isLoading: isLoadingTemplates,
+    revalidate: revalidateTemplates,
+  } = useTemplateCatalogRefresh(client, onMochiTemplatesReloaded);
   const { availableTemplates, templatesById, rememberUpdatedTemplate } = useTemplateOverrides(
-    templates,
+    loadedTemplates ?? templates,
     onMochiTemplateUpdated
   );
   const { isDeletingCard, deleteCard } = useCardDeletion(client);
@@ -635,8 +662,8 @@ function DuplicateCardList({
 
   async function reloadCards(): Promise<void> {
     try {
-      await revalidate();
-      await showToast({ style: Toast.Style.Success, title: "Cards Reloaded" });
+      await Promise.all([revalidate(), revalidateTemplates()]);
+      await showToast({ style: Toast.Style.Success, title: "Cards and Templates Reloaded" });
     } catch (error: unknown) {
       await showToast({
         style: Toast.Style.Failure,
@@ -648,7 +675,7 @@ function DuplicateCardList({
 
   return (
     <List
-      isLoading={isLoading || isDeletingCard}
+      isLoading={isLoading || isLoadingTemplates || isDeletingCard}
       isShowingDetail
       navigationTitle={`${deck.name} · Duplicates`}
       searchBarPlaceholder="Search duplicate cards"
@@ -766,6 +793,29 @@ function useTemplateOverrides(
       onMochiTemplateUpdated(template);
     },
   };
+}
+
+function useTemplateCatalogRefresh(
+  client: MochiClient,
+  onTemplatesReloaded: (templates: readonly MochiTemplate[]) => void
+): {
+  readonly data: readonly MochiTemplate[] | undefined;
+  readonly isLoading: boolean;
+  readonly revalidate: () => Promise<readonly MochiTemplate[]>;
+} {
+  const abortable = useRef<AbortController | undefined>(undefined);
+  const { data, isLoading, revalidate } = usePromise(() => client.listTemplates(abortable.current?.signal), [], {
+    abortable,
+    onData: onTemplatesReloaded,
+    async onError(error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Could Not Refresh Templates",
+        message: mochiErrorMessage(error),
+      });
+    },
+  });
+  return { data, isLoading, revalidate };
 }
 
 function useCardDeletion(client: MochiClient): {
