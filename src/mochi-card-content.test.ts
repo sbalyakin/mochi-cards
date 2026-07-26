@@ -62,7 +62,7 @@ describe("cardMarkdown", () => {
       })
     );
 
-    expect(markdown).toBe("## grace\nLatest result\n[More](https://example.com/grace)");
+    expect(markdown).toBe("## grace  \nLatest result  \n[More](https://example.com/grace)");
   });
 });
 
