@@ -23,7 +23,11 @@ export default function GenerateCard({ deckId }: GenerateCardProps = {}) {
   }
 
   return (
-    <List isLoading={isLoading} navigationTitle="Create Card" searchBarPlaceholder="Choose a template to create a card">
+    <List
+      isLoading={isLoading}
+      navigationTitle={deckId ? "Create Card" : undefined}
+      searchBarPlaceholder="Choose a template to create a card"
+    >
       {matchingTemplates.length === 0 ? (
         <List.EmptyView
           icon={error ? Icon.Warning : Icon.Stars}

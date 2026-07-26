@@ -62,12 +62,7 @@ export default function ManageTemplates() {
   );
 
   return (
-    <List
-      isLoading={isLoading}
-      isShowingDetail
-      navigationTitle="Manage Templates"
-      searchBarPlaceholder="Search templates"
-    >
+    <List isLoading={isLoading} isShowingDetail searchBarPlaceholder="Search templates">
       {templates.length === 0 ? (
         <List.EmptyView
           icon={error ? Icon.Warning : Icon.Document}

@@ -181,11 +181,7 @@ export default function BrowseCards() {
   );
 
   return (
-    <List
-      isLoading={isLoadingBrowseData || isLoadingSelection}
-      navigationTitle="Browse Cards"
-      searchBarPlaceholder="Search visible decks"
-    >
+    <List isLoading={isLoadingBrowseData || isLoadingSelection} searchBarPlaceholder="Search visible decks">
       {browseDataError || selectionError ? (
         <List.EmptyView
           icon={Icon.Warning}
