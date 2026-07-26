@@ -117,6 +117,14 @@ The edit form restores the template and its original input values when that info
 
 Before an update, the extension reloads the card from Mochi. If the card changed since you opened the editor, it asks before applying your generated fields to the latest version. With the same Mochi template, fields your generation template does not manage are preserved. If you switch Mochi templates, the extension sends only fields that belong to the new template. It does not change the card's deck, tags, archive state, position, or reviews.
 
+## Find duplicate cards
+
+In **Browse Cards**, select a deck and choose **Find Duplicate Cards**. The extension reloads the deck from Mochi and groups cards that share the same name. Case, surrounding and repeated whitespace, and Unicode composition are ignored, so `Second Name` and `second   name` land in the same group.
+
+Each group is shown as a section with the name of the oldest card and the number of cards in it. Cards run from oldest to newest and show their creation date, review count, and archived state. Archived cards are included. From a group you can open, edit, copy, or delete a card. After a deletion the groups are recalculated, and a group disappears once only one card is left.
+
+Only the selected deck is checked. Child decks are not included, and only exact matches of the normalized name count as duplicates.
+
 ## Validation and limits
 
 The extension checks templates before generation. It reports problems such as:
@@ -133,7 +141,7 @@ The template language is deliberately small. It supports `<<variable>>` placehol
 
 - **Create Card** creates a card from a reusable template.
 - **Manage Templates** creates, edits, duplicates, and deletes templates.
-- **Browse Cards** shows cards from selected decks and opens compatible cards for editing.
+- **Browse Cards** shows cards from selected decks, opens compatible cards for editing, and finds duplicate cards in a deck.
 
 ## Development
 

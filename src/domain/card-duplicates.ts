@@ -5,6 +5,81 @@ export type NamedCard = {
   readonly name: string | null;
 };
 
+export type CreatedNamedCard = NamedCard & {
+  readonly createdAt?: string;
+};
+
+export type DuplicateCardGroup<T extends CreatedNamedCard> = {
+  readonly normalizedName: string;
+  readonly title: string;
+  readonly cards: readonly T[];
+};
+
+export function findDuplicateCardGroups<T extends CreatedNamedCard>(
+  cards: readonly T[]
+): readonly DuplicateCardGroup<T>[] {
+  const groups = new Map<string, NamedEntry<T>[]>();
+
+  for (const card of cards) {
+    if (card.name === null) {
+      continue;
+    }
+    const normalizedName = normalizeCardName(card.name);
+    if (!normalizedName) {
+      continue;
+    }
+    const entry: NamedEntry<T> = { name: card.name, card };
+    const existingEntries = groups.get(normalizedName);
+    if (existingEntries) {
+      existingEntries.push(entry);
+    } else {
+      groups.set(normalizedName, [entry]);
+    }
+  }
+
+  return [...groups]
+    .filter(([, entries]) => entries.length > 1)
+    .map(([normalizedName, entries]) => {
+      const sortedEntries = [...entries].sort(compareByCreation);
+      return {
+        normalizedName,
+        title: displayCardName(sortedEntries[0].name),
+        cards: sortedEntries.map((entry) => entry.card),
+      };
+    })
+    .sort(
+      (left, right) => left.title.localeCompare(right.title) || left.normalizedName.localeCompare(right.normalizedName)
+    );
+}
+
+type NamedEntry<T extends CreatedNamedCard> = {
+  readonly name: string;
+  readonly card: T;
+};
+
+function compareByCreation<T extends CreatedNamedCard>(left: NamedEntry<T>, right: NamedEntry<T>): number {
+  const leftCreatedAt = creationTimestamp(left.card.createdAt);
+  const rightCreatedAt = creationTimestamp(right.card.createdAt);
+  if (leftCreatedAt !== rightCreatedAt) {
+    if (leftCreatedAt === undefined) {
+      return 1;
+    }
+    if (rightCreatedAt === undefined) {
+      return -1;
+    }
+    return leftCreatedAt - rightCreatedAt;
+  }
+  return left.card.id.localeCompare(right.card.id);
+}
+
+function creationTimestamp(value: string | undefined): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? undefined : parsed;
+}
+
 export function findDuplicateCardByName(cards: readonly NamedCard[], candidateName: string): NamedCard | undefined {
   const normalizedCandidate = normalizeCardName(candidateName);
   if (!normalizedCandidate) {
@@ -14,7 +89,12 @@ export function findDuplicateCardByName(cards: readonly NamedCard[], candidateNa
 }
 
 export function normalizeCardName(value: string): string {
-  return value.normalize("NFC").trim().replace(/\s+/gu, " ").toLowerCase();
+  return displayCardName(value).toLowerCase();
+}
+
+// Keeps the case a card was created with, but drops the whitespace noise a group header must not show.
+function displayCardName(value: string): string {
+  return value.normalize("NFC").trim().replace(/\s+/gu, " ");
 }
 
 export function selectDuplicateCandidate(
