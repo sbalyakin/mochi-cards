@@ -12,6 +12,15 @@ Templates can produce a Markdown card or fill the fields of a Mochi template. Th
 - Preview, edit, and regenerate the result before it reaches Mochi.
 - Browse cards in chosen decks and edit cards that use a Mochi template.
 
+## Screenshots
+
+| | |
+|---|---|
+| ![Choose visible decks](assets/screenshots/mochi-cards-01.png) | ![Browse cards](assets/screenshots/mochi-cards-02.png) |
+| ![Edit a card](assets/screenshots/mochi-cards-03.png) | ![Manage templates](assets/screenshots/mochi-cards-04.png) |
+| ![Set up a template](assets/screenshots/mochi-cards-05.png) | ![Map template fields](assets/screenshots/mochi-cards-06.png) |
+| ![Fill in template inputs](assets/screenshots/mochi-cards-07.png) | ![Review the generated card](assets/screenshots/mochi-cards-08.png) |
+
 ## Before you start
 
 You need:
