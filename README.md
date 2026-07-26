@@ -1,79 +1,69 @@
 # Mochi Cards
 
-Raycast extension for Mochi flashcards on macOS. Build cards from a Markdown body or map typed inputs to fields in an existing Mochi template.
+Mochi Cards lets you create and edit [Mochi](https://mochi.cards/) flashcards from Raycast. You make a reusable template once, fill in a small form, check the result, and send the card to a Mochi deck.
 
-The extension does not invent card structure for you. Your Markdown template is the layout. AI only runs inside tagged blocks you define.
+Templates can produce a Markdown card or fill the fields of a Mochi template. They also support optional AI prompts, which are useful for translations, examples, definitions, and similar text that you do not want to write by hand every time.
 
-## Requirements
+## What you can do
 
-- macOS with [Raycast](https://www.raycast.com/)
-- A [Mochi](https://mochi.cards/) account and API key
-- Raycast AI access (used for `<ai>` fields)
+- Create cards from reusable templates instead of rebuilding the same layout each time.
+- Insert values from the form into a card with `<<variables>>`.
+- Generate selected parts of a card with Raycast AI.
+- Preview, edit, and regenerate the result before it reaches Mochi.
+- Browse cards in chosen decks and edit cards that use a Mochi template.
 
-## Local installation
+## Before you start
 
-```bash
-npm install
-npm run dev
-```
+You need:
 
-Open Raycast, enable the development extension, and enter the Mochi API key in the extension preferences. The key is stored as a Raycast password preference; templates and unfinished form state never contain it.
+- macOS and [Raycast](https://www.raycast.com/)
+- a Mochi account and API key
+- Raycast AI access only if your templates contain `<ai>` blocks
 
-## How it works
+In Mochi, open **Account Settings** to view and manage your API keys.
 
-1. Create a local template with typed inputs, a Mochi deck, and either a Markdown Card Body or Mochi field mappings.
-2. Run **Create Card**, pick a template, and fill the form.
-3. The extension substitutes `<<variables>>`, calls AI for each `<ai>` block, and shows a preview.
-4. Regenerate one AI field, edit the generated output, or send the card to Mochi.
+## Create your first card
 
-Templated Mochi cards can also be edited from **Browse Cards** with **Edit Card** (`⌘E`). The edit flow restores the original generation inputs when possible, runs the same AI preview pipeline, and updates the existing card only after confirmation.
+1. Open **Manage Templates** and create a template.
+2. Add the inputs you want to fill in, choose a Mochi deck, and write the card body or map values to a Mochi template.
+3. Open **Create Card**, choose the template, and fill in the form.
+4. Select **Generate Preview**. The extension replaces variables, runs any AI prompts, and shows the finished card.
+5. Edit the preview if needed, then send it to Mochi.
 
-```
-Template + variable values
-  → variable substitution
-  → AI field processing
-  → preview
-  → Mochi API
-```
-
-Each `<ai>` block is a separate request. If one translation comes back wrong, you can regenerate just that block without touching the rest of the card.
-
-## Template syntax
-
-A template has a name, typed input fields, a Mochi deck, and an output mode. **No Template** and **Default Deck Template** render the saved Card Body. No Template explicitly clears the Mochi template, while Default Deck Template lets Mochi apply the template configured for the deck. Selecting a specific Mochi template maps local inputs or custom generated values to its fields. Tags, reverse review, and archived status are optional.
-
-The template form loads decks from `GET https://app.mochi.cards/api/decks` and Mochi templates from `GET https://app.mochi.cards/api/templates/`. The internal IDs are used only when sending a card to Mochi. `No Template` is selected by default.
-
-### Variables
-
-Inputs can be text, number, or boolean. Declare them in the template settings, then reference their names with placeholders in Card Body or custom mappings:
-
-The first input is the card's primary field. It is always required, accepts text or numbers, and cannot be removed or reordered. When a specific Mochi template is selected, this input is always mapped to its `name` field.
-
-For a specific Mochi template, Create Card compares the primary field with cached card names while it is being filled. A match is shown below the field, and **Generate Preview** asks for confirmation before continuing.
-
-For **No Template** and **Default Deck Template**, Mochi derives the card name from the rendered Card Body. Before saving the preview, Create Card derives the same name locally from the final Markdown and warns about a cached match. This is only a heuristic: Mochi's authoritative name from the create response is used to update the local cache. The check runs before preview for the mapped-name mode and immediately before saving for Card Body.
+For example, a vocabulary template can ask for a word and a context, then create a card like this:
 
 ```markdown
 # <<word>>
+
+---
 
 Context: <<context>>
 ```
 
-Names must be unique, non-empty, start with a letter, and use only letters, digits, and `_`.
+The first input in every template is its primary field. It is required, can contain text or a number, and cannot be removed or moved. When you use a specific Mochi template, this input becomes the card's `name` field.
 
-Examples: `word`, `source_language`, `example_context`
+To help avoid duplicates, the extension compares the primary field with cached card names. With a specific Mochi template, a match appears while you type and **Generate Preview** asks for confirmation before continuing. For Markdown cards, the extension derives a name from the final rendered Markdown and warns before saving. Mochi's response supplies the name kept in the local cache.
 
-Invalid: `source language`, `1word`, `word-name`
+## Write templates
 
-Empty optional text and number values are allowed. Boolean placeholders render as `true` or `false`. Sections with empty inputs are not removed automatically.
+A template has a name, input fields, a deck, and an output mode. You can also set tags, reverse review, and archived status. Inputs can be text, numbers, or checkboxes. Put their names between `<<` and `>>` anywhere in the card body or in a custom field mapping.
 
-### AI fields
+Variable names must be unique, start with a letter, and contain only letters, numbers, and `_`.
 
-Wrap the prompt in `<ai>` tags. Everything inside is sent to AI after variable substitution. The response replaces the whole block.
+Valid names: `word`, `source_language`, `example_context`
+
+Invalid names: `source language`, `1word`, `word-name`
+
+Optional text and number inputs may be empty. A checkbox becomes `true` or `false`. Empty values do not remove the surrounding Markdown automatically.
+
+### Add AI-generated text
+
+Put an AI prompt inside `<ai>` and `</ai>` tags. The extension fills variables first, sends the prompt to Raycast AI, then replaces the whole block with the response.
 
 ```markdown
 # <<word>>
+
+---
 
 ## Translation
 
@@ -91,107 +81,74 @@ On the next line, add the Russian translation.
 </ai>
 ```
 
-AI fields are processed independently, in document order. Variables are substituted before any AI call. AI output is not parsed again as a template, so text like `<<word>>` or `<ai>` in a response stays plain text.
+Each block is a separate request. You can regenerate one bad translation without changing the rest of the card. AI blocks are independent and can run in parallel. The response is final text, so `<<word>>` or `<ai>` appearing inside a response are not processed again.
 
-## Preview actions
+### Choose where the card goes in Mochi
 
-After generation you can:
+The template form loads your decks and Mochi templates automatically.
 
-- **Add to Mochi**: send the active Card Body or mapped Mochi field values to your deck
-- **Edit Markdown / Edit Field Values**: tweak generated output by hand. This disables regeneration until you restore the generated version.
-- **Regenerate All AI Fields**: rerun every `<ai>` block
-- **Regenerate AI Field**: rerun a single block
-- **Back to Input**: change variable values. This invalidates all AI results.
-- **Copy Markdown** and **Save as Markdown File**: available for Card Body output
+Choose one of these output modes:
 
-When editing an existing card, the primary preview action is **Update Card in Mochi**. The input form also lets you edit or choose a Generation Template and switch to another live Mochi template. Switching templates only changes the local edit session; Mochi is not updated until the preview is confirmed.
+- **No Template** sends the rendered Markdown as a plain Mochi card without applying a Mochi template. It is selected by default.
+- **Default Deck Template** sends the rendered Markdown and lets Mochi use the template configured for that deck.
+- A specific **Mochi template** sends values to the fields you map in the template editor. The card body is empty in this mode.
 
-## Sending to Mochi
+For a specific Mochi template, the primary field is always mapped to Mochi's `name` field. Other unmapped fields are left out.
 
-Confirmed cards use one of three request shapes. **No Template** sends rendered Markdown in `content`, an explicit `null` `template-id`, and no fields:
+## Review before sending
 
-```http
-POST https://app.mochi.cards/api/cards/
-```
+The preview is the place to check and adjust the card. You can:
 
-```json
-{
-  "content": "...",
-  "deck-id": "...",
-  "template-id": null
-}
-```
+- add the card to Mochi
+- edit the generated Markdown or mapped field values
+- regenerate all AI fields or only one field
+- return to the input form and change values
+- copy Markdown or save it as a Markdown file when the output is a Card Body
 
-**Default Deck Template** sends the same Card Body but omits `template-id`, allowing Mochi to use the template configured for the deck.
+Editing generated text manually disables regeneration for that text until you restore the generated version. Returning to the input form clears existing AI results because the inputs may have changed.
 
-Specific Mochi template mode sends empty `content`, the selected `template-id`, and only mapped fields. Text and number values are JSON strings; boolean values remain JSON booleans. Unmapped fields are omitted.
+When you save a card, the extension resolves every variable and AI block locally. Neither `<<variables>>` nor `<ai>` tags are sent to Mochi.
 
-```json
-{
-  "content": "",
-  "deck-id": "...",
-  "template-id": "template-id",
-  "fields": {
-    "front-field-id": {
-      "id": "front-field-id",
-      "value": "Rendered field value"
-    },
-    "boolean-field-id": {
-      "id": "boolean-field-id",
-      "value": true
-    }
-  }
-}
-```
+## Edit cards you already created
 
-Placeholders and `<ai>` tags are resolved locally and never appear in either payload.
+Use **Browse Cards** to choose the decks you want to see. Open a card backed by a Mochi template and select **Edit Card**.
 
-Existing templated cards are updated with `POST https://app.mochi.cards/api/cards/:id`. The request contains only empty `content`, `template-id`, and `fields`; deck, tags, archive state, position, and reviews remain unchanged. With the same Mochi template, fields not generated by the selected Generation Template are preserved. After switching Mochi templates, only fields belonging to the new template are sent.
+The edit form restores the template and its original input values when that information is available. It uses the same preview flow as creating a card. You can change the generation template or choose another live Mochi template, then select **Update Card in Mochi** only after reviewing the result.
 
-Before updating, the extension reloads the card. If Mochi changed since the edit session started, the extension asks before merging generated fields onto the latest remote version.
+Before an update, the extension reloads the card from Mochi. If the card changed since you opened the editor, it asks before applying your generated fields to the latest version. With the same Mochi template, fields your generation template does not manage are preserved. If you switch Mochi templates, the extension sends only fields that belong to the new template. It does not change the card's deck, tags, archive state, position, or reviews.
 
-Store your Mochi API key in Raycast preferences. The extension uses HTTP Basic Auth with the API key as the username and an empty password.
+## Validation and limits
 
-Templates are stored locally in a versioned Raycast `LocalStorage` record. If that record is malformed or from an unsupported version, the extension reports the problem and leaves the original data unchanged.
-
-Successful updates and creates for which Mochi returns a card ID also store a versioned local generation context keyed by card ID. It contains the selected Generation Template and its input values so a later edit can reconstruct custom or AI-only inputs that cannot be inferred from Mochi fields. This context is local to the current device, is removed after card deletion, and is not synced through Mochi. If Mochi omits the created card ID, or if a context write fails, the card mutation remains successful and the extension reports a warning instead.
-
-## Template validation
-
-Templates are checked before generation. Common errors:
+The extension checks templates before generation. It reports problems such as:
 
 - `Unknown variable: <<translation>>`
 - `Unclosed <ai> field`
 - `Nested <ai> fields are not supported`
 
-The validator also checks variable name rules, empty AI fields, empty templates, and missing deck selections.
+It also checks variable names, empty AI blocks, empty Markdown card bodies, empty custom mappings, and missing deck selections.
 
-## What is not supported (v1)
-
-The template language is intentionally small:
-
-- `<<variable>>` placeholders
-- `<ai>...</ai>` blocks
-
-Not supported: conditionals, loops, filters, default values, nested `<ai>` tags, references between AI fields, embedded code, or mapping Mochi field types such as transcription and draw.
+The template language is deliberately small. It supports `<<variable>>` placeholders and `<ai>...</ai>` blocks. It does not support conditionals, loops, filters, default values, nested AI blocks, references between AI blocks, embedded code, or Mochi field types such as transcription and draw.
 
 ## Commands
 
-- **Create Card**: pick a template and create a card
-- **Manage Templates**: create, edit, duplicate, and delete templates
-- **Browse Cards**: choose visible decks, browse cards, and edit cards backed by a Mochi template
-
-Browse Cards caches the Mochi deck and template catalog locally. Use **Reload Decks** to refresh it explicitly.
-Card lists are also cached per deck: cached cards appear immediately, then refresh from Mochi in the background and
-update in the open list when they change. An empty or missing cache is loaded from Mochi normally.
+- **Create Card** creates a card from a reusable template.
+- **Manage Templates** creates, edits, duplicates, and deletes templates.
+- **Browse Cards** shows cards from selected decks and opens compatible cards for editing.
 
 ## Development
 
-Open the extension in Raycast with **Manage Extensions** while `npm run dev` is running.
+Install dependencies and start the development extension:
 
-Useful scripts:
+```bash
+npm install
+npm run dev
+```
 
-Vitest is used so the strict TypeScript domain and adapter tests run directly without maintaining a separate emitted test build.
+In Raycast, enable the development extension and add a key in the extension preferences. Raycast stores the key as a password preference. It is not stored in templates or unfinished forms.
+
+While `npm run dev` is running, open the extension through Raycast's **Manage Extensions** screen.
+
+The test suite uses Vitest, so it runs the strict TypeScript domain and adapter tests directly without a separate emitted test build.
 
 ```bash
 npm run build
