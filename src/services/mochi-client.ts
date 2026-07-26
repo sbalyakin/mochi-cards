@@ -190,13 +190,21 @@ export class MochiClient {
   }
 
   async deleteCard(cardId: string, signal?: AbortSignal): Promise<void> {
-    await this.request(
-      `${MOCHI_CARDS_URL}${encodeURIComponent(cardId)}`,
-      {
-        method: "DELETE",
-      },
-      signal
-    );
+    try {
+      await this.request(
+        `${MOCHI_CARDS_URL}${encodeURIComponent(cardId)}`,
+        {
+          method: "DELETE",
+        },
+        signal
+      );
+    } catch (error: unknown) {
+      // Deletion is complete when the card is already gone.
+      if (error instanceof MochiError && error.status === 404) {
+        return;
+      }
+      throw error;
+    }
   }
 
   async getCard(cardId: string, signal?: AbortSignal): Promise<MochiCard> {
@@ -336,6 +344,10 @@ export class MochiClient {
   }
 }
 
+function normalizeBookmark(value: unknown): string | undefined {
+  return typeof value === "string" && value !== "nil" ? value : undefined;
+}
+
 function parseCardPage(responseText: string): MochiCardPage {
   try {
     const value: unknown = JSON.parse(responseText);
@@ -351,7 +363,7 @@ function parseCardPage(responseText: string): MochiCardPage {
         const parsed = parseMochiCard(card);
         return parsed ? [parsed] : [];
       }),
-      bookmark: value.bookmark,
+      bookmark: normalizeBookmark(value.bookmark),
     };
   } catch (error: unknown) {
     if (error instanceof MochiError) {
@@ -388,7 +400,7 @@ function parseDeckPage(responseText: string): MochiDeckPage {
     ) {
       throw new Error("Mochi returned an invalid deck list");
     }
-    return { decks: value.docs.flatMap(parseMochiDeck), bookmark: value.bookmark };
+    return { decks: value.docs.flatMap(parseMochiDeck), bookmark: normalizeBookmark(value.bookmark) };
   } catch (error: unknown) {
     if (error instanceof MochiError) {
       throw error;
@@ -414,7 +426,7 @@ function parseTemplatePage(responseText: string): MochiTemplatePage {
         const parsed = parseMochiTemplate(template);
         return parsed ? [parsed] : [];
       }),
-      bookmark: value.bookmark,
+      bookmark: normalizeBookmark(value.bookmark),
     };
   } catch (error: unknown) {
     if (error instanceof MochiError) {

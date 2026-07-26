@@ -98,6 +98,12 @@ describe("MochiClient", () => {
     expect(init?.body).toBeUndefined();
   });
 
+  it("treats an already deleted card as deleted", async () => {
+    const client = new MochiClient("secret-key", async () => new Response("Not found", { status: 404 }));
+
+    await expect(client.deleteCard("card-1")).resolves.toBeUndefined();
+  });
+
   it("updates only Mochi template content and fields", async () => {
     const fetch = vi.fn<FetchLike>().mockResolvedValue(new Response("", { status: 200 }));
     const client = new MochiClient("secret-key", fetch);
@@ -304,6 +310,21 @@ describe("MochiClient", () => {
       "https://app.mochi.cards/api/cards/?deck-id=deck-1&limit=100&bookmark=next-page",
       expect.objectContaining({ method: "GET" })
     );
+  });
+
+  it("stops pagination at Mochi's nil bookmark", async () => {
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          docs: [],
+          bookmark: "nil",
+        })
+      )
+    );
+    const client = new MochiClient("key", fetch);
+
+    await expect(client.listCards("deck-1")).resolves.toEqual([]);
+    expect(fetch).toHaveBeenCalledOnce();
   });
 
   it("loads every page of templates and sorts them", async () => {
