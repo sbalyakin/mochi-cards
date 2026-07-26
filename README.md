@@ -125,7 +125,7 @@ The extension checks templates before generation. It reports problems such as:
 - `Unclosed <ai> field`
 - `Nested <ai> fields are not supported`
 
-It also checks variable names, empty AI blocks, empty Markdown card bodies, empty custom mappings, and missing deck selections.
+It also checks variable names, empty AI blocks, empty Markdown card bodies, and missing deck selections.
 
 The template language is deliberately small. It supports `<<variable>>` placeholders and `<ai>...</ai>` blocks. It does not support conditionals, loops, filters, default values, nested AI blocks, references between AI blocks, embedded code, or Mochi field types such as transcription and draw.
 

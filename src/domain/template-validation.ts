@@ -31,7 +31,6 @@ export type TemplateValidationErrorCode =
   | "binding-source-stale"
   | "binding-type-incompatible"
   | "binding-target-unmappable"
-  | "custom-mapping-required"
   | "unknown-placeholder"
   | TemplateParseErrorCode;
 
@@ -225,14 +224,6 @@ function validateBindings(
       return;
     }
 
-    if (!binding.template.trim()) {
-      errors.push({
-        code: "custom-mapping-required",
-        path: `${path}.template`,
-        message: `Custom mapping for "${target.name}" is empty`,
-      });
-      return;
-    }
     validateContent(binding.template, sourceFields, `${path}.template`, false, errors);
   });
 }

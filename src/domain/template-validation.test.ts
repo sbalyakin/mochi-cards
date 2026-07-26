@@ -92,6 +92,31 @@ describe("validateTemplate", () => {
     );
   });
 
+  it("accepts empty custom mappings", () => {
+    const draft = createDraft({
+      output: {
+        kind: "mochi-template",
+        target: {
+          status: "configured",
+          template: {
+            id: "remote",
+            name: "Remote",
+            fields: [
+              { id: "name", name: "Name", type: "text", multiline: false },
+              { id: "front", name: "Front", type: "text", multiline: false },
+            ],
+          },
+          bindings: [
+            { kind: "input", targetFieldId: "name", sourceFieldId: "word" },
+            { kind: "custom", targetFieldId: "front", template: "" },
+          ],
+        },
+      },
+    });
+
+    expect(validateTemplate(draft)).toEqual([]);
+  });
+
   it("enforces the primary field invariants", () => {
     expect(validateTemplate(createDraft({ fields: [] })).map((error) => error.code)).toContain(
       "primary-field-required"
