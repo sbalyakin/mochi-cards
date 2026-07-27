@@ -395,6 +395,7 @@ function CardList({
     data: cards = [],
     error,
     isLoading,
+    mutate,
     revalidate,
   } = useCachedPromise((deckId: string) => client.listCards(deckId, abortable.current?.signal), [deck.id], {
     abortable,
@@ -438,6 +439,18 @@ function CardList({
         setSort(value);
         setIsSortReversed(false);
       }
+    }
+  }
+
+  async function cacheCreatedCard(createdCard: MochiCard): Promise<void> {
+    try {
+      await mutate(Promise.resolve(), {
+        optimisticUpdate: (currentCards) => [...currentCards.filter((card) => card.id !== createdCard.id), createdCard],
+        rollbackOnError: false,
+        shouldRevalidateAfter: false,
+      });
+    } catch {
+      // The card was added to Mochi. Updating the local list cache is best-effort.
     }
   }
 
@@ -522,7 +535,7 @@ function CardList({
                     title="Create Card"
                     icon={Icon.NewDocument}
                     shortcut={Keyboard.Shortcut.Common.New}
-                    target={<GenerateCard deckId={deck.id} />}
+                    target={<GenerateCard deckId={deck.id} onCardCreated={cacheCreatedCard} />}
                   />
                   <Action
                     title="Reload Cards"
@@ -569,7 +582,7 @@ function CardList({
                     title="Create Card"
                     icon={Icon.NewDocument}
                     shortcut={Keyboard.Shortcut.Common.New}
-                    target={<GenerateCard deckId={deck.id} />}
+                    target={<GenerateCard deckId={deck.id} onCardCreated={cacheCreatedCard} />}
                   />
                   <Action.CopyToClipboard
                     title="Copy as Markdown"

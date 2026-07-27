@@ -2,6 +2,7 @@ import { Action, ActionPanel, Icon, List } from "@raycast/api";
 import { usePromise } from "@raycast/utils";
 
 import { GenerationInputForm } from "./components/generation-input-form";
+import type { MochiCard } from "./services/mochi-client";
 import { TemplateForm } from "./components/template-form";
 import { TemplateRepository } from "./storage/template-repository";
 
@@ -9,9 +10,10 @@ const repository = new TemplateRepository();
 
 type GenerateCardProps = {
   readonly deckId?: string;
+  readonly onCardCreated?: (card: MochiCard) => Promise<void> | void;
 };
 
-export default function GenerateCard({ deckId }: GenerateCardProps = {}) {
+export default function GenerateCard({ deckId, onCardCreated }: GenerateCardProps = {}) {
   const { data: templates = [], error, isLoading, revalidate } = usePromise(() => repository.list(), []);
   const matchingTemplates = deckId ? templates.filter((template) => template.deckId === deckId) : templates;
   const refresh = async (): Promise<void> => {
@@ -19,7 +21,7 @@ export default function GenerateCard({ deckId }: GenerateCardProps = {}) {
   };
 
   if (deckId && !isLoading && !error && matchingTemplates.length === 1) {
-    return <GenerationInputForm template={matchingTemplates[0]} />;
+    return <GenerationInputForm template={matchingTemplates[0]} onCardCreated={onCardCreated} />;
   }
 
   return (
@@ -58,7 +60,7 @@ export default function GenerateCard({ deckId }: GenerateCardProps = {}) {
                     <Action.Push
                       title="Create Card Using Template"
                       icon={Icon.NewDocument}
-                      target={<GenerationInputForm template={template} />}
+                      target={<GenerationInputForm template={template} onCardCreated={onCardCreated} />}
                     />
                   ) : null}
                   <Action.Push

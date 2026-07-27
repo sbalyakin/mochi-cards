@@ -52,7 +52,7 @@ type CardPreviewProps = {
   readonly template: CardTemplate;
   readonly values: FieldValues;
   readonly mode:
-    | { readonly kind: "create"; readonly onCardAdded: () => void }
+    | { readonly kind: "create"; readonly onCardAdded: (card?: MochiCard) => Promise<void> | void }
     | {
         readonly kind: "update";
         readonly card: MochiCard;
@@ -281,7 +281,7 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
           title: "Card added to Mochi",
           message: card.id ? `Card ID: ${card.id}` : template.name,
         });
-        await cacheCreatedCardBestEffort(client, template.deckId, card, controller.signal);
+        const createdCard = await cacheCreatedCardBestEffort(client, template.deckId, card, controller.signal);
         if (card.id && mochiOutput) {
           await saveContextWithWarning(card.id, template, values, mochiOutput.templateId, controller.signal);
         } else if (mochiOutput) {
@@ -291,7 +291,7 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
             message: "Mochi did not return a card ID, so this card's generation inputs cannot be restored later.",
           });
         }
-        mode.onCardAdded();
+        await mode.onCardAdded(createdCard);
         pop();
       } else {
         if (!mochiOutput) {
@@ -590,22 +590,23 @@ async function cacheCreatedCardBestEffort(
   deckId: string,
   card: { readonly id?: string; readonly name?: string | null },
   signal: AbortSignal
-): Promise<void> {
+): Promise<MochiCard | undefined> {
   if (card.id === undefined) {
-    return;
+    return undefined;
   }
   if (card.name !== undefined) {
     upsertCreatedCardBestEffort(cardCacheRepository, deckId, card);
-    return;
   }
   try {
     const createdCard = await client.getCard(card.id, signal);
     if (!signal.aborted) {
       upsertCreatedCardBestEffort(cardCacheRepository, deckId, { id: createdCard.id, name: createdCard.name });
+      return createdCard;
     }
   } catch {
-    // The card already exists. A cache write must not fail the operation.
+    // The card was added to Mochi. Updating the local card cache is best-effort.
   }
+  return undefined;
 }
 
 async function saveContextWithWarning(

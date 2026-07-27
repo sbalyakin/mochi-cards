@@ -3,6 +3,7 @@ import { Fragment, useState, type ReactNode } from "react";
 
 import { findDuplicateCardByName, selectDuplicateCandidate } from "../domain/card-duplicates";
 import type { CardTemplate, FieldValues } from "../domain/template";
+import type { MochiCard } from "../services/mochi-client";
 import { CardCacheRepository } from "../storage/card-cache-repository";
 import { CardPreview } from "./card-preview";
 
@@ -13,6 +14,7 @@ type GenerationInputFormProps = {
   readonly initialValues?: FieldValues;
   readonly mode?: "create" | "update";
   readonly onGenerate?: (values: FieldValues) => Promise<void> | void;
+  readonly onCardCreated?: (card: MochiCard) => Promise<void> | void;
   readonly onValuesChange?: (values: FieldValues) => void;
   readonly secondaryActions?: ReactNode;
   readonly warnings?: readonly string[];
@@ -23,6 +25,7 @@ export function GenerationInputForm({
   initialValues,
   mode = "create",
   onGenerate,
+  onCardCreated,
   onValuesChange,
   secondaryActions,
   warnings = [],
@@ -86,7 +89,21 @@ export function GenerationInputForm({
     if (onGenerate) {
       await onGenerate(values);
     } else {
-      push(<CardPreview template={template} values={values} mode={{ kind: "create", onCardAdded: resetInput }} />);
+      push(
+        <CardPreview
+          template={template}
+          values={values}
+          mode={{
+            kind: "create",
+            onCardAdded: async (card) => {
+              resetInput();
+              if (card) {
+                await onCardCreated?.(card);
+              }
+            },
+          }}
+        />
+      );
     }
   }
 
