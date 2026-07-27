@@ -1276,7 +1276,6 @@ function CardDetail({
 }) {
   const latestReviewDate = lastReviewDate(card);
   const hasSameCreatedAndUpdatedTime = datesMatchWithinMinute(card.createdAt, card.updatedAt);
-  const templateFieldNamesById = new Map(template?.fields.map((field) => [field.id, field.name]));
 
   return (
     <List.Item.Detail
@@ -1284,21 +1283,6 @@ function CardDetail({
       metadata={
         showMetadata ? (
           <List.Item.Detail.Metadata>
-            {card.fields.map((field) => (
-              <List.Item.Detail.Metadata.Label
-                key={field.id}
-                title={templateFieldNamesById.get(field.id) || field.id}
-                text={String(field.value)}
-              />
-            ))}
-            {card.tags.length > 0 ? (
-              <List.Item.Detail.Metadata.TagList title="Tags">
-                {card.tags.map((tag) => (
-                  <List.Item.Detail.Metadata.TagList.Item key={tag} text={tag} />
-                ))}
-              </List.Item.Detail.Metadata.TagList>
-            ) : null}
-            {card.fields.length > 0 || card.tags.length > 0 ? <List.Item.Detail.Metadata.Separator /> : null}
             <List.Item.Detail.Metadata.Label title="Review Count" text={String(card.reviews.length)} />
             {latestReviewDate ? (
               <List.Item.Detail.Metadata.Label title="Last Reviewed" text={formatDateOnly(latestReviewDate)} />
@@ -1319,6 +1303,14 @@ function CardDetail({
               />
             ) : null}
             <List.Item.Detail.Metadata.Label title="Deck" text={deck.name} icon={Icon.Book} />
+            {card.tags.length > 0 ? <List.Item.Detail.Metadata.Separator /> : null}
+            {card.tags.length > 0 ? (
+              <List.Item.Detail.Metadata.TagList title="Tags">
+                {card.tags.map((tag) => (
+                  <List.Item.Detail.Metadata.TagList.Item key={tag} text={tag} />
+                ))}
+              </List.Item.Detail.Metadata.TagList>
+            ) : null}
           </List.Item.Detail.Metadata>
         ) : undefined
       }
