@@ -36,6 +36,7 @@ import { DeckSelectionRepository } from "./storage/deck-selection-repository";
 import { CardGenerationContextRepository } from "./storage/card-generation-context-repository";
 import { CardCacheRepository } from "./storage/card-cache-repository";
 import { isCardListFilter, CardListSortRepository, type CardListFilter } from "./storage/card-list-sort-repository";
+import { DeckBrowseOrderRepository } from "./storage/deck-browse-order-repository";
 import {
   MochiCatalogRepository,
   type MochiCatalog,
@@ -44,6 +45,7 @@ import {
 import { TemplateRepository } from "./storage/template-repository";
 
 const deckSelectionRepository = new DeckSelectionRepository();
+const deckBrowseOrderRepository = new DeckBrowseOrderRepository();
 const cardGenerationContextRepository = new CardGenerationContextRepository();
 const cardCacheRepository = new CardCacheRepository();
 const cardListSortRepository = new CardListSortRepository();
@@ -71,6 +73,8 @@ export default function BrowseCards() {
   const client = new MochiClient(mochiApiKey);
   const browseDataAbortable = useRef<AbortController | undefined>(undefined);
   const [isCatalogInvalidated, setIsCatalogInvalidated] = useState(false);
+  const [deckOrder, setDeckOrder] = useState<readonly string[]>([]);
+  const hasChangedDeckOrder = useRef(false);
   const [, setCatalogRevision] = useState(0);
   let cachedCatalog: MochiCatalog | undefined;
   let catalogCacheError: unknown;
@@ -97,6 +101,26 @@ export default function BrowseCards() {
     isLoading: isLoadingSelection,
     revalidate: revalidateSelection,
   } = usePromise(() => deckSelectionRepository.list(), []);
+  const { data: savedDeckOrder, isLoading: isLoadingDeckOrder } = usePromise(
+    () => deckBrowseOrderRepository.list(),
+    [],
+    {
+      async onError(error) {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: "Could Not Load Deck Order",
+          message: errorMessage(error),
+        });
+      },
+    }
+  );
+
+  useEffect(() => {
+    if (savedDeckOrder === undefined || hasChangedDeckOrder.current) {
+      return;
+    }
+    setDeckOrder(savedDeckOrder);
+  }, [savedDeckOrder]);
 
   function invalidateCatalog(): void {
     mochiCatalogRepository.clear();
@@ -108,7 +132,23 @@ export default function BrowseCards() {
   const decks = browseData?.decks ?? [];
   const templates = browseData?.templates ?? [];
   const selectedDeckIdSet = new Set(selectedDeckIds);
-  const visibleDecks = decks.filter((deck) => selectedDeckIdSet.has(deck.id));
+  const visibleDecks = orderDecks(
+    decks.filter((deck) => selectedDeckIdSet.has(deck.id)),
+    deckOrder
+  );
+
+  function rememberOpenedDeck(deckId: string): void {
+    hasChangedDeckOrder.current = true;
+    const nextDeckOrder = [deckId, ...visibleDecks.map((deck) => deck.id).filter((id) => id !== deckId)];
+    setDeckOrder(nextDeckOrder);
+    void deckBrowseOrderRepository.replace(nextDeckOrder).catch((error: unknown) => {
+      void showToast({
+        style: Toast.Style.Failure,
+        title: "Could Not Save Deck Order",
+        message: errorMessage(error),
+      });
+    });
+  }
 
   function rememberMochiTemplate(template: MochiTemplate): void {
     const currentCatalog = mochiCatalogRepository.get();
@@ -181,7 +221,10 @@ export default function BrowseCards() {
   );
 
   return (
-    <List isLoading={isLoadingBrowseData || isLoadingSelection} searchBarPlaceholder="Search visible decks">
+    <List
+      isLoading={isLoadingBrowseData || isLoadingSelection || isLoadingDeckOrder}
+      searchBarPlaceholder="Search visible decks"
+    >
       {browseDataError || selectionError ? (
         <List.EmptyView
           icon={Icon.Warning}
@@ -225,6 +268,7 @@ export default function BrowseCards() {
                 <Action.Push
                   title="Browse Cards"
                   icon={Icon.List}
+                  onPush={() => rememberOpenedDeck(deck.id)}
                   target={
                     <CardList
                       client={client}
@@ -436,15 +480,27 @@ function CardList({
     setSort(savedSortPreference.sort);
     setIsSortReversed(savedSortPreference.isReversed);
     setFilter(savedSortPreference.filter);
+    setIsShowingMetadata(savedSortPreference.showMetadata ?? true);
   }, [savedSortPreference]);
 
-  function setViewPreference(nextSort: CardSort, nextIsReversed: boolean, nextFilter: CardListFilter): void {
+  function setViewPreference(
+    nextSort: CardSort,
+    nextIsReversed: boolean,
+    nextFilter: CardListFilter,
+    nextShowMetadata: boolean
+  ): void {
     hasChangedSortPreference.current = true;
     setSort(nextSort);
     setIsSortReversed(nextIsReversed);
     setFilter(nextFilter);
+    setIsShowingMetadata(nextShowMetadata);
     void cardListSortRepository
-      .save(deck.id, { sort: nextSort, isReversed: nextIsReversed, filter: nextFilter })
+      .save(deck.id, {
+        sort: nextSort,
+        isReversed: nextIsReversed,
+        filter: nextFilter,
+        showMetadata: nextShowMetadata,
+      })
       .catch((error: unknown) => {
         void showToast({
           style: Toast.Style.Failure,
@@ -456,14 +512,14 @@ function CardList({
 
   function selectViewOption(value: string): void {
     if (isCardListFilter(value)) {
-      setViewPreference(sort, isSortReversed, value);
+      setViewPreference(sort, isSortReversed, value, isShowingMetadata);
       return;
     }
     if (isCardSort(value)) {
       if (value === sort) {
-        setViewPreference(sort, !isSortReversed, filter);
+        setViewPreference(sort, !isSortReversed, filter, isShowingMetadata);
       } else {
-        setViewPreference(value, false, filter);
+        setViewPreference(value, false, filter, isShowingMetadata);
       }
     }
   }
@@ -632,12 +688,12 @@ function CardList({
                     title={isShowingMetadata ? "Hide Details" : "Show Details"}
                     icon={isShowingMetadata ? Icon.EyeDisabled : Icon.Eye}
                     shortcut={{ modifiers: ["cmd"], key: "d" }}
-                    onAction={() => setIsShowingMetadata((isVisible) => !isVisible)}
+                    onAction={() => setViewPreference(sort, isSortReversed, filter, !isShowingMetadata)}
                   />
                   <Action
                     title={isSortReversed ? "Use Default Sort Order" : "Reverse Sort Order"}
                     icon={Icon.ChevronUpDown}
-                    onAction={() => setViewPreference(sort, !isSortReversed, filter)}
+                    onAction={() => setViewPreference(sort, !isSortReversed, filter, isShowingMetadata)}
                   />
                   <Action
                     title="Reload Cards"
@@ -1394,4 +1450,13 @@ async function fetchAndCacheMochiCatalog(client: MochiClient, signal?: AbortSign
 
 function cardCountLabel(count: number): string {
   return `${count} card${count === 1 ? "" : "s"}`;
+}
+
+function orderDecks(decks: readonly MochiDeck[], deckOrder: readonly string[]): readonly MochiDeck[] {
+  const orderByDeckId = new Map(deckOrder.map((deckId, index) => [deckId, index]));
+  return [...decks].sort((left, right) => {
+    const leftOrder = orderByDeckId.get(left.id) ?? Number.MAX_SAFE_INTEGER;
+    const rightOrder = orderByDeckId.get(right.id) ?? Number.MAX_SAFE_INTEGER;
+    return leftOrder - rightOrder;
+  });
 }

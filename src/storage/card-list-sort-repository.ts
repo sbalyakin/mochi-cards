@@ -9,6 +9,7 @@ export type CardListSortPreference = {
   readonly sort: CardSort;
   readonly isReversed: boolean;
   readonly filter: CardListFilter;
+  readonly showMetadata?: boolean;
 };
 
 export type CardListFilter = "all" | "reviewed" | "not-reviewed";
@@ -100,7 +101,8 @@ function isPreference(value: unknown): value is CardListSortPreference {
     typeof value.sort === "string" &&
     isCardSort(value.sort) &&
     typeof value.isReversed === "boolean" &&
-    isCardListFilter(value.filter)
+    isCardListFilter(value.filter) &&
+    (value.showMetadata === undefined || typeof value.showMetadata === "boolean")
   );
 }
 

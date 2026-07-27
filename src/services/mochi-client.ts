@@ -108,6 +108,7 @@ export type CreateMochiCardRequest = {
 export type UpdateMochiCardRequest = {
   readonly templateId: string;
   readonly fields: Readonly<Record<string, FieldValue>>;
+  readonly tags: readonly string[];
 };
 
 type MochiCardPage = {
@@ -183,6 +184,7 @@ export class MochiClient {
           content: "",
           "template-id": request.templateId,
           fields: Object.fromEntries(Object.entries(request.fields).map(([id, value]) => [id, { id, value }])),
+          "manual-tags": request.tags,
         }),
       },
       signal

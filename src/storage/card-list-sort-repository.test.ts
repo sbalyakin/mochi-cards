@@ -35,19 +35,34 @@ describe("CardListSortRepository", () => {
   });
 
   it("stores sort preferences independently for each deck", async () => {
-    await repository.save("deck-1", { sort: "updated-at", isReversed: true, filter: "reviewed" });
-    await repository.save("deck-2", { sort: "alphabetical", isReversed: false, filter: "all" });
+    await repository.save("deck-1", { sort: "updated-at", isReversed: true, filter: "reviewed", showMetadata: false });
+    await repository.save("deck-2", { sort: "alphabetical", isReversed: false, filter: "all", showMetadata: true });
 
     await expect(repository.get("deck-1")).resolves.toEqual({
       sort: "updated-at",
       isReversed: true,
       filter: "reviewed",
+      showMetadata: false,
     });
-    await expect(repository.get("deck-2")).resolves.toEqual({ sort: "alphabetical", isReversed: false, filter: "all" });
+    await expect(repository.get("deck-2")).resolves.toEqual({
+      sort: "alphabetical",
+      isReversed: false,
+      filter: "all",
+      showMetadata: true,
+    });
   });
 
   it("returns no preference when a deck has not been configured", async () => {
     await expect(repository.get("deck-1")).resolves.toBeUndefined();
+  });
+
+  it("reads preferences saved before detail visibility was tracked", async () => {
+    storage.value = JSON.stringify({
+      version: 1,
+      preferences: { "deck-1": { sort: "position", isReversed: false, filter: "all" } },
+    });
+
+    await expect(repository.get("deck-1")).resolves.toEqual({ sort: "position", isReversed: false, filter: "all" });
   });
 
   it("keeps corrupted storage unchanged", async () => {

@@ -371,11 +371,16 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
             currentFieldIds.has(id)
           )
         );
-        await client.updateCard(mode.card.id, { templateId: mochiOutput.templateId, fields }, controller.signal);
+        await client.updateCard(
+          mode.card.id,
+          { templateId: mochiOutput.templateId, fields, tags: template.tags },
+          controller.signal
+        );
         let updatedCard: MochiCard = {
           ...current,
           content: "",
           templateId: mochiOutput.templateId,
+          tags: template.tags,
           fields: Object.entries(fields).map(([id, value]) => ({ id, value })),
         };
         let refreshError: unknown;
@@ -423,7 +428,7 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
 
   const generatedSession = session?.mode === "generated" ? session : undefined;
   const manuallyEditedSession = session?.mode === "manually-edited" ? session : undefined;
-  const visibleTags = mode.kind === "create" ? template.tags : mode.card.tags;
+  const visibleTags = template.tags;
   function leavePreview(): void {
     activeController.current?.abort(new Error("Preview closed"));
     if (mode.kind === "create") {
@@ -436,9 +441,7 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
   return (
     <Detail
       isLoading={isWorking}
-      navigationTitle={
-        session ? `${template.name} Preview` : `${mode.kind === "create" ? "Creating" : "Updating"} ${template.name}`
-      }
+      navigationTitle={session ? "Card Preview" : mode.kind === "create" ? "Generating Card" : "Regenerating Card"}
       markdown={session ? previewMarkdown || "_No generated content yet._" : creationMarkdown}
       metadata={
         <Detail.Metadata>

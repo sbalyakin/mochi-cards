@@ -104,13 +104,14 @@ describe("MochiClient", () => {
     await expect(client.deleteCard("card-1")).resolves.toBeUndefined();
   });
 
-  it("updates only Mochi template content and fields", async () => {
+  it("updates Mochi template content, fields, and tags", async () => {
     const fetch = vi.fn<FetchLike>().mockResolvedValue(new Response("", { status: 200 }));
     const client = new MochiClient("secret-key", fetch);
 
     await client.updateCard("card/1", {
       templateId: "template-2",
       fields: { front: "Hello", active: true },
+      tags: ["greek"],
     });
 
     const [url, init] = fetch.mock.calls[0];
@@ -127,6 +128,7 @@ describe("MochiClient", () => {
         front: { id: "front", value: "Hello" },
         active: { id: "active", value: true },
       },
+      "manual-tags": ["greek"],
     });
   });
 
