@@ -33,12 +33,13 @@ type EditCardFlowProps = {
   readonly card: MochiCard;
   readonly deck: MochiDeck;
   readonly client: MochiClient;
+  readonly startInPreview?: boolean;
   readonly onCardUpdated: (card: MochiCard, template: MochiTemplate) => Promise<void> | void;
 };
 
 type PreviousSession = { readonly template: CardTemplate; readonly values: FieldValues };
 
-export function EditCardFlow({ card, deck, client, onCardUpdated }: EditCardFlowProps) {
+export function EditCardFlow({ card, deck, client, startInPreview = false, onCardUpdated }: EditCardFlowProps) {
   const { pop } = useNavigation();
   const abortable = useRef<AbortController | undefined>(undefined);
   const [targetMochiTemplateId, setTargetMochiTemplateId] = useState(card.templateId ?? "");
@@ -81,8 +82,14 @@ export function EditCardFlow({ card, deck, client, onCardUpdated }: EditCardFlow
     return (
       <Detail
         isLoading={isLoading}
-        navigationTitle="Edit Card"
-        markdown={error ? `# Could Not Start Edit\n\n${errorMessage(error)}` : "Loading card and templates…"}
+        navigationTitle={startInPreview ? "Regenerate Card" : "Edit Card"}
+        markdown={
+          error
+            ? `# Could Not Start ${startInPreview ? "Regeneration" : "Edit"}\n\n${errorMessage(error)}`
+            : startInPreview
+              ? "Preparing regeneration…"
+              : "Loading card and templates…"
+        }
       />
     );
   }
@@ -157,6 +164,7 @@ export function EditCardFlow({ card, deck, client, onCardUpdated }: EditCardFlow
         mochiTemplates={data.mochiTemplates}
         generationTemplates={templates}
         deck={deck}
+        startInPreview={startInPreview}
         onTemplateSaved={rememberTemplate}
         onChooseGeneration={(template, previous) => {
           setPreviousSession(previous);
@@ -208,6 +216,7 @@ function EditSession({
   mochiTemplates,
   generationTemplates,
   deck,
+  startInPreview,
   onTemplateSaved,
   onChooseGeneration,
   onChangeMochiTemplate,
@@ -223,6 +232,7 @@ function EditSession({
   readonly mochiTemplates: readonly MochiTemplate[];
   readonly generationTemplates: readonly CardTemplate[];
   readonly deck: MochiDeck;
+  readonly startInPreview: boolean;
   readonly onTemplateSaved: (template: CardTemplate) => void;
   readonly onChooseGeneration: (template: CardTemplate, previous: PreviousSession) => void;
   readonly onChangeMochiTemplate: (templateId: string, previous?: PreviousSession) => void;
@@ -232,7 +242,8 @@ function EditSession({
   const [template, setTemplate] = useState(initialTemplate);
   const [values, setValues] = useState<FieldValues>(restored.values);
   const [warnings, setWarnings] = useState<readonly string[]>([...initialWarnings, ...restored.warnings]);
-  const [isPreviewing, setIsPreviewing] = useState(false);
+  const { pop } = useNavigation();
+  const [isPreviewing, setIsPreviewing] = useState(startInPreview);
 
   function currentSession(): PreviousSession {
     return { template, values };
@@ -263,7 +274,13 @@ function EditSession({
       <CardPreview
         template={template}
         values={values}
-        mode={{ kind: "update", card, onBack: () => setIsPreviewing(false), onCardUpdated }}
+        mode={{
+          kind: "update",
+          card,
+          onBack: startInPreview ? pop : () => setIsPreviewing(false),
+          ...(startInPreview ? { backTitle: "Back to Cards" } : {}),
+          onCardUpdated,
+        }}
       />
     );
   }

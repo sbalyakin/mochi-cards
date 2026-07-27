@@ -15,6 +15,7 @@ type GenerationInputFormProps = {
   readonly mode?: "create" | "update";
   readonly onGenerate?: (values: FieldValues) => Promise<void> | void;
   readonly onCardCreated?: (card: MochiCard) => Promise<void> | void;
+  readonly returnToSourceAfterCardCreated?: boolean;
   readonly onValuesChange?: (values: FieldValues) => void;
   readonly secondaryActions?: ReactNode;
   readonly warnings?: readonly string[];
@@ -26,6 +27,7 @@ export function GenerationInputForm({
   mode = "create",
   onGenerate,
   onCardCreated,
+  returnToSourceAfterCardCreated = false,
   onValuesChange,
   secondaryActions,
   warnings = [],
@@ -95,6 +97,7 @@ export function GenerationInputForm({
           values={values}
           mode={{
             kind: "create",
+            returnToSourceAfterCardAdded: returnToSourceAfterCardCreated,
             onCardAdded: async (card) => {
               resetInput();
               if (card) {

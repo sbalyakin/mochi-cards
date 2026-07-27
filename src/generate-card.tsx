@@ -1,5 +1,6 @@
 import { Action, ActionPanel, Icon, List } from "@raycast/api";
 import { usePromise } from "@raycast/utils";
+import { useState } from "react";
 
 import { GenerationInputForm } from "./components/generation-input-form";
 import type { MochiCard } from "./services/mochi-client";
@@ -11,17 +12,33 @@ const repository = new TemplateRepository();
 type GenerateCardProps = {
   readonly deckId?: string;
   readonly onCardCreated?: (card: MochiCard) => Promise<void> | void;
+  readonly returnToSourceAfterCardCreated?: boolean;
 };
 
-export default function GenerateCard({ deckId, onCardCreated }: GenerateCardProps = {}) {
+export default function GenerateCard({
+  deckId,
+  onCardCreated,
+  returnToSourceAfterCardCreated = false,
+}: GenerateCardProps = {}) {
   const { data: templates = [], error, isLoading, revalidate } = usePromise(() => repository.list(), []);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | undefined>();
   const matchingTemplates = deckId ? templates.filter((template) => template.deckId === deckId) : templates;
+  const selectedTemplate = matchingTemplates.find((template) => template.id === selectedTemplateId);
+  const soleDeckTemplate =
+    deckId && !isLoading && !error && matchingTemplates.length === 1 ? matchingTemplates[0] : undefined;
+  const activeTemplate = selectedTemplate ?? soleDeckTemplate;
   const refresh = async (): Promise<void> => {
     await revalidate();
   };
 
-  if (deckId && !isLoading && !error && matchingTemplates.length === 1) {
-    return <GenerationInputForm template={matchingTemplates[0]} onCardCreated={onCardCreated} />;
+  if (activeTemplate) {
+    return (
+      <GenerationInputForm
+        template={activeTemplate}
+        onCardCreated={onCardCreated}
+        returnToSourceAfterCardCreated={returnToSourceAfterCardCreated}
+      />
+    );
   }
 
   return (
@@ -57,11 +74,19 @@ export default function GenerateCard({ deckId, onCardCreated }: GenerateCardProp
               actions={
                 <ActionPanel>
                   {canGenerate ? (
-                    <Action.Push
-                      title="Create Card Using Template"
-                      icon={Icon.NewDocument}
-                      target={<GenerationInputForm template={template} onCardCreated={onCardCreated} />}
-                    />
+                    returnToSourceAfterCardCreated ? (
+                      <Action
+                        title="Create Card Using Template"
+                        icon={Icon.NewDocument}
+                        onAction={() => setSelectedTemplateId(template.id)}
+                      />
+                    ) : (
+                      <Action.Push
+                        title="Create Card Using Template"
+                        icon={Icon.NewDocument}
+                        target={<GenerationInputForm template={template} onCardCreated={onCardCreated} />}
+                      />
+                    )
                   ) : null}
                   <Action.Push
                     title="Edit Template"

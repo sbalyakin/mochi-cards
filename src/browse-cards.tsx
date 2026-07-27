@@ -35,6 +35,7 @@ import {
 import { DeckSelectionRepository } from "./storage/deck-selection-repository";
 import { CardGenerationContextRepository } from "./storage/card-generation-context-repository";
 import { CardCacheRepository } from "./storage/card-cache-repository";
+import { isCardListFilter, CardListSortRepository, type CardListFilter } from "./storage/card-list-sort-repository";
 import {
   MochiCatalogRepository,
   type MochiCatalog,
@@ -45,6 +46,7 @@ import { TemplateRepository } from "./storage/template-repository";
 const deckSelectionRepository = new DeckSelectionRepository();
 const cardGenerationContextRepository = new CardGenerationContextRepository();
 const cardCacheRepository = new CardCacheRepository();
+const cardListSortRepository = new CardListSortRepository();
 const generationTemplateRepository = new TemplateRepository();
 const mochiCatalogRepository = new MochiCatalogRepository();
 const dateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
@@ -63,8 +65,6 @@ const CARD_SORT_ICONS: Readonly<Record<CardSort, Icon>> = {
   "last-reviewed": Icon.CheckCircle,
   "review-count": Icon.CheckList,
 };
-
-type CardFilter = (typeof CARD_FILTER_OPTIONS)[number]["value"];
 
 export default function BrowseCards() {
   const { mochiApiKey } = getPreferenceValues<Preferences.BrowseCards>();
@@ -378,9 +378,11 @@ function CardList({
   const abortable = useRef<AbortController | undefined>(undefined);
   const [sort, setSort] = useState<CardSort>("position");
   const [isSortReversed, setIsSortReversed] = useState(false);
-  const [filter, setFilter] = useState<CardFilter>("all");
+  const [filter, setFilter] = useState<CardListFilter>("all");
   const [isShowingMetadata, setIsShowingMetadata] = useState(true);
   const hasCardsRef = useRef(false);
+  const hasChangedSortPreference = useRef(false);
+  const { data: savedSortPreference } = usePromise((deckId: string) => cardListSortRepository.get(deckId), [deck.id]);
   const {
     data: loadedTemplates,
     isLoading: isLoadingTemplates,
@@ -427,17 +429,41 @@ function CardList({
   const visibleCards = sortedCards.filter((card) => matchesFilter(card, filter));
   const isCurrentSortDescending = isSortDescending(sort, isSortReversed);
 
+  useEffect(() => {
+    if (!savedSortPreference || hasChangedSortPreference.current) {
+      return;
+    }
+    setSort(savedSortPreference.sort);
+    setIsSortReversed(savedSortPreference.isReversed);
+    setFilter(savedSortPreference.filter);
+  }, [savedSortPreference]);
+
+  function setViewPreference(nextSort: CardSort, nextIsReversed: boolean, nextFilter: CardListFilter): void {
+    hasChangedSortPreference.current = true;
+    setSort(nextSort);
+    setIsSortReversed(nextIsReversed);
+    setFilter(nextFilter);
+    void cardListSortRepository
+      .save(deck.id, { sort: nextSort, isReversed: nextIsReversed, filter: nextFilter })
+      .catch((error: unknown) => {
+        void showToast({
+          style: Toast.Style.Failure,
+          title: "Could Not Save Card Sort",
+          message: errorMessage(error),
+        });
+      });
+  }
+
   function selectViewOption(value: string): void {
-    if (isCardFilter(value)) {
-      setFilter(value);
+    if (isCardListFilter(value)) {
+      setViewPreference(sort, isSortReversed, value);
       return;
     }
     if (isCardSort(value)) {
       if (value === sort) {
-        setIsSortReversed((reversed) => !reversed);
+        setViewPreference(sort, !isSortReversed, filter);
       } else {
-        setSort(value);
-        setIsSortReversed(false);
+        setViewPreference(value, false, filter);
       }
     }
   }
@@ -535,7 +561,9 @@ function CardList({
                     title="Create Card"
                     icon={Icon.NewDocument}
                     shortcut={Keyboard.Shortcut.Common.New}
-                    target={<GenerateCard deckId={deck.id} onCardCreated={cacheCreatedCard} />}
+                    target={
+                      <GenerateCard deckId={deck.id} onCardCreated={cacheCreatedCard} returnToSourceAfterCardCreated />
+                    }
                   />
                   <Action
                     title="Reload Cards"
@@ -578,11 +606,22 @@ function CardList({
                       await revalidate();
                     }}
                   />
+                  <RegenerateCardAction
+                    card={card}
+                    client={client}
+                    deck={deck}
+                    onCardUpdated={async (_updatedCard, updatedTemplate) => {
+                      rememberUpdatedTemplate(updatedTemplate);
+                      await revalidate();
+                    }}
+                  />
                   <Action.Push
                     title="Create Card"
                     icon={Icon.NewDocument}
                     shortcut={Keyboard.Shortcut.Common.New}
-                    target={<GenerateCard deckId={deck.id} onCardCreated={cacheCreatedCard} />}
+                    target={
+                      <GenerateCard deckId={deck.id} onCardCreated={cacheCreatedCard} returnToSourceAfterCardCreated />
+                    }
                   />
                   <Action.CopyToClipboard
                     title="Copy as Markdown"
@@ -598,7 +637,7 @@ function CardList({
                   <Action
                     title={isSortReversed ? "Use Default Sort Order" : "Reverse Sort Order"}
                     icon={Icon.ChevronUpDown}
-                    onAction={() => setIsSortReversed((reversed) => !reversed)}
+                    onAction={() => setViewPreference(sort, !isSortReversed, filter)}
                   />
                   <Action
                     title="Reload Cards"
@@ -890,10 +929,10 @@ function useCardDeletion(client: MochiClient): {
         partialFailureMessage
           ? {
               style: Toast.Style.Failure,
-              title: "Card Deleted, but Follow-Up Was Incomplete",
+              title: `Card deleted: ${cardTitle(card)} (follow-up incomplete)`,
               message: partialFailureMessage,
             }
-          : { style: Toast.Style.Success, title: "Card Deleted" }
+          : { style: Toast.Style.Success, title: `Card deleted: ${cardTitle(card)}` }
       );
       return true;
     } finally {
@@ -1103,17 +1142,15 @@ function CardView({
   );
 }
 
-function EditCardAction({
-  card,
-  client,
-  deck,
-  onCardUpdated,
-}: {
+type EditCardActionProps = {
   readonly card: MochiCard;
   readonly client: MochiClient;
   readonly deck: MochiDeck;
   readonly onCardUpdated: (card: MochiCard, template: MochiTemplate) => Promise<void> | void;
-}) {
+  readonly startInPreview?: boolean;
+};
+
+function EditCardAction({ card, client, deck, onCardUpdated, startInPreview = false }: EditCardActionProps) {
   const { push } = useNavigation();
   const isOpening = useRef(false);
   const openAbortable = useRef<AbortController | undefined>(undefined);
@@ -1135,6 +1172,10 @@ function EditCardAction({
   }
 
   async function openEditor(): Promise<void> {
+    if (startInPreview) {
+      push(<EditCardFlow card={card} client={client} deck={deck} startInPreview onCardUpdated={onCardUpdated} />);
+      return;
+    }
     if (isOpening.current) {
       return;
     }
@@ -1173,7 +1214,15 @@ function EditCardAction({
         }
       }
       if (isCurrent()) {
-        push(<EditCardFlow card={freshCard} client={client} deck={deck} onCardUpdated={onCardUpdated} />);
+        push(
+          <EditCardFlow
+            card={freshCard}
+            client={client}
+            deck={deck}
+            startInPreview={startInPreview}
+            onCardUpdated={onCardUpdated}
+          />
+        );
       }
     } catch (error: unknown) {
       if (isCurrent()) {
@@ -1193,14 +1242,21 @@ function EditCardAction({
     }
   }
 
-  return <Action title="Edit Card" icon={Icon.Pencil} shortcut={Keyboard.Shortcut.Common.Edit} onAction={openEditor} />;
+  return (
+    <Action
+      title={startInPreview ? "Regenerate Card" : "Edit Card"}
+      icon={startInPreview ? Icon.Repeat : Icon.Pencil}
+      shortcut={startInPreview ? { modifiers: ["cmd", "shift"], key: "r" } : Keyboard.Shortcut.Common.Edit}
+      onAction={openEditor}
+    />
+  );
 }
 
-function isCardFilter(value: string): value is CardFilter {
-  return CARD_FILTER_OPTIONS.some((option) => option.value === value);
+function RegenerateCardAction(props: Omit<EditCardActionProps, "startInPreview">) {
+  return <EditCardAction {...props} startInPreview />;
 }
 
-function matchesFilter(card: MochiCard, filter: CardFilter): boolean {
+function matchesFilter(card: MochiCard, filter: CardListFilter): boolean {
   if (filter === "all") {
     return true;
   }

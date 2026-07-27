@@ -12,6 +12,7 @@ import {
 } from "@raycast/api";
 import { useEffect, useRef, useState } from "react";
 
+import { cardTitle } from "../card-sorting";
 import { deriveMochiCardName, findDuplicateCardByName, selectDuplicateCandidate } from "../domain/card-duplicates";
 import {
   editMarkdown,
@@ -52,11 +53,16 @@ type CardPreviewProps = {
   readonly template: CardTemplate;
   readonly values: FieldValues;
   readonly mode:
-    | { readonly kind: "create"; readonly onCardAdded: (card?: MochiCard) => Promise<void> | void }
+    | {
+        readonly kind: "create";
+        readonly onCardAdded: (card?: MochiCard) => Promise<void> | void;
+        readonly returnToSourceAfterCardAdded?: boolean;
+      }
     | {
         readonly kind: "update";
         readonly card: MochiCard;
         readonly onBack: () => void;
+        readonly backTitle?: string;
         readonly onCardUpdated: (card: MochiCard, template: MochiTemplate, signal: AbortSignal) => Promise<void> | void;
       };
 };
@@ -276,12 +282,11 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
           },
           controller.signal
         );
+        const createdCard = await cacheCreatedCardBestEffort(client, template.deckId, card, controller.signal);
         await showToast({
           style: Toast.Style.Success,
-          title: "Card added to Mochi",
-          message: card.id ? `Card ID: ${card.id}` : template.name,
+          title: `Card added: ${createdCard ? cardTitle(createdCard) : card.name?.trim() || deriveMochiCardName(markdown)}`,
         });
-        const createdCard = await cacheCreatedCardBestEffort(client, template.deckId, card, controller.signal);
         if (card.id && mochiOutput) {
           await saveContextWithWarning(card.id, template, values, mochiOutput.templateId, controller.signal);
         } else if (mochiOutput) {
@@ -292,6 +297,11 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
           });
         }
         await mode.onCardAdded(createdCard);
+        if (mode.returnToSourceAfterCardAdded) {
+          pop();
+          setTimeout(pop, 0);
+          return;
+        }
         pop();
       } else {
         if (!mochiOutput) {
@@ -381,10 +391,10 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
           refreshError
             ? {
                 style: Toast.Style.Failure,
-                title: "Card Updated, but Refresh Failed",
+                title: `Card updated: ${cardTitle(updatedCard)} (refresh failed)`,
                 message: mochiErrorMessage(refreshError),
               }
-            : { style: Toast.Style.Success, title: "Card updated in Mochi" }
+            : { style: Toast.Style.Success, title: `Card updated: ${cardTitle(updatedCard)}` }
         );
         if (controller.signal.aborted) {
           return;
@@ -524,7 +534,11 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
                   ) : null}
                 </>
               ) : null}
-              <Action title="Back to Input" icon={Icon.ArrowLeft} onAction={leavePreview} />
+              <Action
+                title={mode.kind === "update" ? (mode.backTitle ?? "Back to Input") : "Back to Input"}
+                icon={Icon.ArrowLeft}
+                onAction={leavePreview}
+              />
               {isCardBodySession ? <Action.CopyToClipboard title="Copy Markdown" content={markdown} /> : null}
               {isCardBodySession ? (
                 <Action.Push
