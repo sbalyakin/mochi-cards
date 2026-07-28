@@ -10,6 +10,7 @@ import {
   Toast,
   useNavigation,
 } from "@raycast/api";
+import { usePromise } from "@raycast/utils";
 import { useEffect, useRef, useState } from "react";
 
 import { cardTitle } from "../card-sorting";
@@ -45,6 +46,7 @@ import {
 import { RaycastAiClient } from "../services/raycast-ai-client";
 import { CardCacheRepository, upsertCreatedCardBestEffort } from "../storage/card-cache-repository";
 import { CardGenerationContextRepository } from "../storage/card-generation-context-repository";
+import { CardPreviewSettingsRepository } from "../storage/card-preview-settings-repository";
 import { MarkdownEditor } from "./markdown-editor";
 import { MochiValuesEditor } from "./mochi-values-editor";
 import { SaveMarkdownForm } from "./save-markdown-form";
@@ -74,6 +76,7 @@ type Preferences = {
 const aiClient = new RaycastAiClient();
 const cardCacheRepository = new CardCacheRepository();
 const contextRepository = new CardGenerationContextRepository();
+const cardPreviewSettingsRepository = new CardPreviewSettingsRepository();
 
 export function CardPreview({ template, values, mode }: CardPreviewProps) {
   const { pop } = useNavigation();
@@ -81,6 +84,8 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
   const [previewMochiTemplate, setPreviewMochiTemplate] = useState<MochiTemplate | undefined>(undefined);
   const [isWorking, setIsWorking] = useState(true);
   const [creationLog, setCreationLog] = useState<readonly string[]>([]);
+  const [isShowingMetadata, setIsShowingMetadata] = useState(false);
+  const hasChangedMetadataPreference = useRef(false);
   const operationNumber = useRef(0);
   const activeController = useRef<AbortController | undefined>(undefined);
   const markdown = session ? renderMarkdown(session) : "";
@@ -99,6 +104,35 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
   const duplicate = duplicateCandidate
     ? findDuplicateCardByName(cardCacheRepository.get(template.deckId), duplicateCandidate)
     : undefined;
+  const { data: savedIsShowingMetadata } = usePromise(() => cardPreviewSettingsRepository.getShowMetadata(), [], {
+    async onError(error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Could Not Load Preview Details Setting",
+        message: errorMessage(error),
+      });
+    },
+  });
+
+  useEffect(() => {
+    if (savedIsShowingMetadata === undefined || hasChangedMetadataPreference.current) {
+      return;
+    }
+    setIsShowingMetadata(savedIsShowingMetadata);
+  }, [savedIsShowingMetadata]);
+
+  function toggleMetadata(): void {
+    const nextIsShowingMetadata = !isShowingMetadata;
+    hasChangedMetadataPreference.current = true;
+    setIsShowingMetadata(nextIsShowingMetadata);
+    void cardPreviewSettingsRepository.saveShowMetadata(nextIsShowingMetadata).catch((error: unknown) => {
+      void showToast({
+        style: Toast.Style.Failure,
+        title: "Could Not Save Preview Details Setting",
+        message: errorMessage(error),
+      });
+    });
+  }
 
   useEffect(() => {
     const logProgress = (progress: GenerationProgress): void => {
@@ -444,29 +478,35 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
       navigationTitle={session ? "Card Preview" : mode.kind === "create" ? "Generating Card" : "Regenerating Card"}
       markdown={session ? previewMarkdown || "_No generated content yet._" : creationMarkdown}
       metadata={
-        <Detail.Metadata>
-          <Detail.Metadata.Label title="Template" text={template.name} icon={Icon.Snippets} />
-          <Detail.Metadata.Label title="Deck" text={template.deckName} icon={Icon.Book} />
-          {duplicate ? (
-            <Detail.Metadata.Label title="Duplicate" text={`A card for "${duplicate.name}" already exists`} icon="⚠️" />
-          ) : null}
-          {visibleTags.length > 0 ? (
-            <Detail.Metadata.TagList title="Tags">
-              {visibleTags.map((tag) => (
-                <Detail.Metadata.TagList.Item key={tag} text={tag} />
-              ))}
-            </Detail.Metadata.TagList>
-          ) : null}
-          {fieldErrors.length > 0 ? <Detail.Metadata.Separator /> : null}
-          {fieldErrors.map((error) => (
-            <Detail.Metadata.Label
-              key={error.id}
-              title={generationFieldTitle(session, error.id)}
-              text={error.message}
-              icon={Icon.Warning}
-            />
-          ))}
-        </Detail.Metadata>
+        isShowingMetadata ? (
+          <Detail.Metadata>
+            <Detail.Metadata.Label title="Template" text={template.name} icon={Icon.Snippets} />
+            <Detail.Metadata.Label title="Deck" text={template.deckName} icon={Icon.Book} />
+            {duplicate ? (
+              <Detail.Metadata.Label
+                title="Duplicate"
+                text={`A card for "${duplicate.name}" already exists`}
+                icon="⚠️"
+              />
+            ) : null}
+            {visibleTags.length > 0 ? (
+              <Detail.Metadata.TagList title="Tags">
+                {visibleTags.map((tag) => (
+                  <Detail.Metadata.TagList.Item key={tag} text={tag} />
+                ))}
+              </Detail.Metadata.TagList>
+            ) : null}
+            {fieldErrors.length > 0 ? <Detail.Metadata.Separator /> : null}
+            {fieldErrors.map((error) => (
+              <Detail.Metadata.Label
+                key={error.id}
+                title={generationFieldTitle(session, error.id)}
+                text={error.message}
+                icon={Icon.Warning}
+              />
+            ))}
+          </Detail.Metadata>
+        ) : undefined
       }
       actions={
         <ActionPanel>
@@ -507,6 +547,12 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
                   }}
                 />
               )}
+              <Action
+                title={isShowingMetadata ? "Hide Details" : "Show Details"}
+                icon={isShowingMetadata ? Icon.EyeDisabled : Icon.Eye}
+                shortcut={{ modifiers: ["cmd"], key: "d" }}
+                onAction={toggleMetadata}
+              />
               {generatedSession ? (
                 <>
                   <Action
