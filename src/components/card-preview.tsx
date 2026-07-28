@@ -6,6 +6,8 @@ import {
   Detail,
   getPreferenceValues,
   Icon,
+  launchCommand,
+  LaunchType,
   showToast,
   Toast,
   useNavigation,
@@ -15,6 +17,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { cardTitle } from "../card-sorting";
 import { deriveMochiCardName, findDuplicateCardByName, selectDuplicateCandidate } from "../domain/card-duplicates";
+import { cardChangedSinceOpen, mergeUpdateFields } from "../domain/edit-card";
 import {
   editMarkdown,
   generateSession,
@@ -31,8 +34,8 @@ import {
   type GeneratedSession,
   type GenerationSession,
 } from "../domain/generation-session";
-import { cardChangedSinceOpen, mergeUpdateFields } from "../domain/edit-card";
 import type { CardTemplate, FieldValues } from "../domain/template";
+import { templateUsesAi, type AiClient } from "../domain/template-engine";
 import { detectTemplateDrift, refreshTemplateSnapshot } from "../domain/mochi-template";
 import { cardMarkdown } from "../mochi-card-content";
 import { renderRaycastMarkdown } from "../raycast-markdown";
@@ -43,7 +46,10 @@ import {
   type MochiCard,
   type MochiTemplate,
 } from "../services/mochi-client";
-import { RaycastAiClient } from "../services/raycast-ai-client";
+import { createAiClient } from "../services/ai-client-factory";
+import { displayAiModelName } from "../services/ai-model-display-name";
+import { AiProviderError } from "../services/ai-provider";
+import { aiSettingsRepository } from "../services/raycast-ai-settings-repository";
 import { CardCacheRepository, upsertCreatedCardBestEffort } from "../storage/card-cache-repository";
 import { CardGenerationContextRepository } from "../storage/card-generation-context-repository";
 import { CardPreviewSettingsRepository } from "../storage/card-preview-settings-repository";
@@ -69,11 +75,8 @@ type CardPreviewProps = {
       };
 };
 
-type Preferences = {
-  readonly mochiApiKey: string;
-};
+type Preferences = { readonly mochiApiKey: string };
 
-const aiClient = new RaycastAiClient();
 const cardCacheRepository = new CardCacheRepository();
 const contextRepository = new CardGenerationContextRepository();
 const cardPreviewSettingsRepository = new CardPreviewSettingsRepository();
@@ -83,6 +86,7 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
   const [session, setSession] = useState<GenerationSession | undefined>(undefined);
   const [previewMochiTemplate, setPreviewMochiTemplate] = useState<MochiTemplate | undefined>(undefined);
   const [isWorking, setIsWorking] = useState(true);
+  const [generationFailure, setGenerationFailure] = useState<string | undefined>(undefined);
   const [creationLog, setCreationLog] = useState<readonly string[]>([]);
   const [isShowingMetadata, setIsShowingMetadata] = useState(false);
   const hasChangedMetadataPreference = useRef(false);
@@ -135,20 +139,22 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
   }
 
   useEffect(() => {
+    let aiModelName: string | undefined;
     const logProgress = (progress: GenerationProgress): void => {
-      setCreationLog((current) => [...current, generationProgressMessage(progress)]);
+      setCreationLog((current) => [...current, generationProgressMessage(progress, aiModelName)]);
     };
 
     async function generateInitialSession(controller: AbortController): Promise<void> {
       try {
+        setGenerationFailure(undefined);
+        const preferences = getPreferenceValues<Preferences>();
         let generationTemplate = template;
         let livePreviewTemplate: MochiTemplate | undefined;
         if (template.output.kind === "mochi-template") {
           if (template.output.target.status === "needs-configuration") {
             throw new Error("Mochi template mappings need configuration");
           }
-          const { mochiApiKey } = getPreferenceValues<Preferences>();
-          const liveTemplate = await new MochiClient(mochiApiKey).getTemplate(
+          const liveTemplate = await new MochiClient(preferences.mochiApiKey).getTemplate(
             template.output.target.template.id,
             controller.signal
           );
@@ -169,19 +175,21 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
           };
           livePreviewTemplate = liveTemplate;
         }
+
+        const aiSettings = templateUsesAi(generationTemplate) ? await aiSettingsRepository.get() : undefined;
+        aiModelName = aiSettings ? displayAiModelName(aiSettings) : undefined;
+        const aiClient = aiSettings ? createAiClient(aiSettings) : undefined;
         const generated = await generateSession(generationTemplate, values, aiClient, controller.signal, logProgress);
         if (controller.signal.aborted) {
           return;
         }
+        const errors = getAiFieldErrors(generated);
         setPreviewMochiTemplate(livePreviewTemplate);
         setSession(generated);
-        const errors = getAiFieldErrors(generated);
         if (errors.length > 0) {
-          await showToast({
-            style: Toast.Style.Failure,
-            title: `${errors.length} AI field${errors.length === 1 ? "" : "s"} failed`,
-            message: "Successful fields were kept. Retry the failed fields from the preview.",
-          });
+          const message = errors.map((error) => error.message).join("; ");
+          setGenerationFailure(message);
+          return;
         }
       } catch (error: unknown) {
         if (!controller.signal.aborted) {
@@ -189,6 +197,7 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
             style: Toast.Style.Failure,
             title: "Could not generate card",
             message: errorMessage(error),
+            primaryAction: aiPreferencesAction(error),
           });
           if (controller.signal.aborted) {
             return;
@@ -223,7 +232,7 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
 
   async function runRegeneration(
     title: string,
-    operation: (generated: GeneratedSession, signal: AbortSignal) => Promise<GeneratedSession>
+    operation: (generated: GeneratedSession, aiClient: AiClient, signal: AbortSignal) => Promise<GeneratedSession>
   ): Promise<void> {
     if (!session || session.mode !== "generated" || activeController.current) {
       return;
@@ -236,20 +245,29 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
     activeController.current = controller;
     setIsWorking(true);
     try {
-      const updated = await operation(generated, controller.signal);
+      const aiClient = createAiClient(await aiSettingsRepository.get());
+      const updated = await operation(generated, aiClient, controller.signal);
       if (operationNumber.current !== currentOperation) {
         return;
       }
       setSession(updated);
       const errors = getAiFieldErrors(updated);
-      await showToast({
-        style: errors.length === 0 ? Toast.Style.Success : Toast.Style.Failure,
-        title: errors.length === 0 ? title : `${errors.length} AI field${errors.length === 1 ? "" : "s"} failed`,
-        message: errors.length === 0 ? undefined : "Successful responses were kept. Retry the failed fields.",
-      });
+      if (errors.length === 0) {
+        setGenerationFailure(undefined);
+        await showToast({ style: Toast.Style.Success, title });
+      } else {
+        const message = errors.map((error) => error.message).join("; ");
+        setGenerationFailure(message);
+        setCreationLog((current) => [...current, `⚠️ AI field regeneration failed: ${message}`]);
+      }
     } catch (error: unknown) {
       if (!controller.signal.aborted) {
-        await showToast({ style: Toast.Style.Failure, title: "Regeneration failed", message: errorMessage(error) });
+        await showToast({
+          style: Toast.Style.Failure,
+          title: "Regeneration failed",
+          message: errorMessage(error),
+          primaryAction: aiPreferencesAction(error),
+        });
       }
     } finally {
       if (activeController.current === controller) {
@@ -462,6 +480,11 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
 
   const generatedSession = session?.mode === "generated" ? session : undefined;
   const manuallyEditedSession = session?.mode === "manually-edited" ? session : undefined;
+  const failedAiFields = generatedSession
+    ? getGeneratedAiFields(generatedSession).filter((field) => field.result.status === "error")
+    : [];
+  const retryableAiFields =
+    failedAiFields.length > 0 ? failedAiFields : generatedSession ? getGeneratedAiFields(generatedSession) : [];
   const visibleTags = template.tags;
   function leavePreview(): void {
     activeController.current?.abort(new Error("Preview closed"));
@@ -475,8 +498,16 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
   return (
     <Detail
       isLoading={isWorking}
-      navigationTitle={session ? "Card Preview" : mode.kind === "create" ? "Generating Card" : "Regenerating Card"}
-      markdown={session ? previewMarkdown || "_No generated content yet._" : creationMarkdown}
+      navigationTitle={
+        generationFailure
+          ? "Generation Failed"
+          : session
+            ? "Card Preview"
+            : mode.kind === "create"
+              ? "Generating Card"
+              : "Regenerating Card"
+      }
+      markdown={session && !generationFailure ? previewMarkdown || "_No generated content yet._" : creationMarkdown}
       metadata={
         isShowingMetadata ? (
           <Detail.Metadata>
@@ -510,7 +541,7 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
       }
       actions={
         <ActionPanel>
-          {session ? (
+          {session && !generationFailure ? (
             <>
               {ready ? (
                 <Action
@@ -553,34 +584,32 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
                 shortcut={{ modifiers: ["cmd"], key: "d" }}
                 onAction={toggleMetadata}
               />
-              {generatedSession ? (
+              {generatedSession && getGeneratedAiFields(generatedSession).length > 0 ? (
                 <>
                   <Action
                     title="Regenerate All AI Fields"
                     icon={Icon.Repeat}
                     onAction={() =>
-                      runRegeneration("All AI fields regenerated", (generated, signal) =>
+                      runRegeneration("All AI fields regenerated", (generated, aiClient, signal) =>
                         regenerateAll(generated, aiClient, signal)
                       )
                     }
                   />
-                  {getGeneratedAiFields(generatedSession).length > 0 ? (
-                    <ActionPanel.Submenu title="Regenerate AI Field" icon={Icon.Wand}>
-                      {getGeneratedAiFields(generatedSession).map((field) => (
-                        <Action
-                          key={field.id}
-                          title={generationFieldTitle(generatedSession, field.id)}
-                          icon={field.result.status === "error" ? Icon.Warning : Icon.Stars}
-                          onAction={() =>
-                            runRegeneration(
-                              `${generationFieldTitle(generatedSession, field.id)} regenerated`,
-                              (generated, signal) => regenerateField(generated, field.id, aiClient, signal)
-                            )
-                          }
-                        />
-                      ))}
-                    </ActionPanel.Submenu>
-                  ) : null}
+                  <ActionPanel.Submenu title="Regenerate AI Field" icon={Icon.Wand}>
+                    {getGeneratedAiFields(generatedSession).map((field) => (
+                      <Action
+                        key={field.id}
+                        title={generationFieldTitle(generatedSession, field.id)}
+                        icon={field.result.status === "error" ? Icon.Warning : Icon.Stars}
+                        onAction={() =>
+                          runRegeneration(
+                            `${generationFieldTitle(generatedSession, field.id)} regenerated`,
+                            (generated, aiClient, signal) => regenerateField(generated, field.id, aiClient, signal)
+                          )
+                        }
+                      />
+                    ))}
+                  </ActionPanel.Submenu>
                 </>
               ) : null}
               <Action
@@ -604,9 +633,28 @@ export function CardPreview({ template, values, mode }: CardPreviewProps) {
                 />
               ) : null}
             </>
+          ) : generationFailure && generatedSession ? (
+            <>
+              <ActionPanel.Submenu title="Retry Failed AI Field" icon={Icon.Repeat}>
+                {retryableAiFields.map((field) => (
+                  <Action
+                    key={field.id}
+                    title={generationFieldTitle(generatedSession, field.id)}
+                    icon={Icon.Warning}
+                    onAction={() =>
+                      runRegeneration(
+                        `${generationFieldTitle(generatedSession, field.id)} regenerated`,
+                        (generated, aiClient, signal) => regenerateField(generated, field.id, aiClient, signal)
+                      )
+                    }
+                  />
+                ))}
+              </ActionPanel.Submenu>
+              <Action title="Back to Input" icon={Icon.ArrowLeft} onAction={leavePreview} />
+            </>
           ) : (
             <Action
-              title={mode.kind === "create" ? "Cancel Creation" : "Cancel Update"}
+              title={generationFailure ? "Back to Input" : mode.kind === "create" ? "Cancel Creation" : "Cancel Update"}
               icon={Icon.Stop}
               onAction={leavePreview}
             />
@@ -698,16 +746,16 @@ async function saveContextWithWarning(
   }
 }
 
-function generationProgressMessage(progress: GenerationProgress): string {
+function generationProgressMessage(progress: GenerationProgress, modelName?: string): string {
   switch (progress.kind) {
     case "substituting-fields":
       return "Substituting field values into template...";
     case "generating-ai-fields":
-      return `Generating ${progress.total} AI field${progress.total === 1 ? "" : "s"}...`;
+      return `Generating ${progress.total} AI field${progress.total === 1 ? "" : "s"}${modelName ? ` with ${modelName}` : ""}...`;
     case "ai-field-finished":
       return progress.succeeded
         ? `AI field ${progress.number}/${progress.total} generated...`
-        : `AI field ${progress.number}/${progress.total} failed...`;
+        : `⚠️ AI field ${progress.number}/${progress.total} failed: ${progress.errorMessage ?? "AI request failed"}`;
     case "rendering-preview":
       return "Rendering card preview...";
     default:
@@ -731,6 +779,16 @@ function cardBodyTemplateMode(template: CardTemplate): "none" | "deck-default" {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unexpected error";
+}
+
+function aiPreferencesAction(error: unknown): Toast.ActionOptions | undefined {
+  if (!(error instanceof AiProviderError) || (error.kind !== "configuration" && error.kind !== "authentication")) {
+    return undefined;
+  }
+  return {
+    title: "Configure AI Provider",
+    onAction: () => launchCommand({ name: "configure-ai", type: LaunchType.UserInitiated }),
+  };
 }
 
 function assertNever(value: never): never {

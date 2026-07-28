@@ -47,6 +47,32 @@ describe("regenerateBulkCard", () => {
     expect(fixture.updates).toEqual([]);
   });
 
+  it("regenerates a template without AI when no AI client is configured", async () => {
+    const fixture = dependencies({ withoutAiClient: true });
+    const withoutAi = template();
+    if (withoutAi.output.kind !== "mochi-template" || withoutAi.output.target.status !== "configured") {
+      throw new Error("Expected a configured Mochi template");
+    }
+    const staticTemplate: CardTemplate = {
+      ...withoutAi,
+      output: {
+        ...withoutAi.output,
+        target: {
+          ...withoutAi.output.target,
+          bindings: [
+            { kind: "input", targetFieldId: "front", sourceFieldId: "word" },
+            { kind: "custom", targetFieldId: "back", template: "static meaning" },
+          ],
+        },
+      },
+    };
+
+    await expect(
+      regenerateBulkCard(analysis(), staticTemplate, liveSnapshot(), fixture.dependencies)
+    ).resolves.toMatchObject({ kind: "updated" });
+    expect(fixture.updates[0]?.fields.back).toBe("static meaning");
+  });
+
   it.each([
     ["deck", { deckId: "deck-2" }, "Card moved to another deck."],
     ["template", { templateId: "mochi-2" }, "Card now uses a different Mochi template."],
@@ -174,6 +200,7 @@ function dependencies(
     readonly aiError?: Error;
     readonly contextError?: Error;
     readonly onAsk?: () => void;
+    readonly withoutAiClient?: boolean;
   } = {}
 ) {
   let current = options.card ?? card();
@@ -194,15 +221,19 @@ function dependencies(
         fields: Object.entries(request.fields).map(([id, value]) => ({ id, value })),
       };
     },
-    aiClient: {
-      async ask(): Promise<string> {
-        options.onAsk?.();
-        if (options.aiError) {
-          throw options.aiError;
-        }
-        return "generated meaning";
-      },
-    },
+    ...(options.withoutAiClient
+      ? {}
+      : {
+          aiClient: {
+            async ask(): Promise<string> {
+              options.onAsk?.();
+              if (options.aiError) {
+                throw options.aiError;
+              }
+              return "generated meaning";
+            },
+          },
+        }),
     async saveContext(context): Promise<void> {
       if (options.contextError) {
         throw options.contextError;

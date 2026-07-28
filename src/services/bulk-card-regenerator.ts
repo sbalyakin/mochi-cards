@@ -14,7 +14,7 @@ export type BulkCardResult =
 export interface BulkCardRegeneratorDependencies {
   getCard(cardId: string, signal?: AbortSignal): Promise<MochiCard>;
   updateCard(cardId: string, request: UpdateMochiCardRequest, signal?: AbortSignal): Promise<void>;
-  readonly aiClient: AiClient;
+  readonly aiClient?: AiClient;
   saveContext(context: Omit<CardGenerationContext, "updatedAt">): Promise<unknown>;
   cacheCard?(card: MochiCard): Promise<void> | void;
 }

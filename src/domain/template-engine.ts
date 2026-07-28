@@ -60,6 +60,17 @@ export function trimOuterEmptyLines(content: string): string {
   return content.replace(/^(?:[ \t]*(?:\r\n|\n|\r))+/, "").replace(/(?:(?:\r\n|\n|\r)[ \t]*)+$/, "");
 }
 
+export function templateUsesAi(template: CardTemplate): boolean {
+  if (template.cardBody.includes("<ai>")) {
+    return true;
+  }
+  return (
+    template.output.kind === "mochi-template" &&
+    template.output.target.status === "configured" &&
+    template.output.target.bindings.some((binding) => binding.kind === "custom" && binding.template.includes("<ai>"))
+  );
+}
+
 function assertNever(value: never): never {
   throw new Error(`Unexpected template segment: ${JSON.stringify(value)}`);
 }

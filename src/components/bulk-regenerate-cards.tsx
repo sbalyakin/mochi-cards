@@ -5,6 +5,8 @@ import {
   confirmAlert,
   getPreferenceValues,
   Icon,
+  launchCommand,
+  LaunchType,
   List,
   showToast,
   Toast,
@@ -20,6 +22,9 @@ import {
 } from "../domain/bulk-card-regeneration";
 import { detectTemplateDrift, refreshTemplateSnapshot } from "../domain/mochi-template";
 import type { CardTemplate, MochiTemplateSnapshot } from "../domain/template";
+import { templateUsesAi, type AiClient } from "../domain/template-engine";
+import { createAiClient } from "../services/ai-client-factory";
+import { AiProviderError } from "../services/ai-provider";
 import {
   regenerateBulkCard,
   runBulkCardBatch,
@@ -28,7 +33,7 @@ import {
   type BulkCardResult,
 } from "../services/bulk-card-regenerator";
 import { MochiClient, toMochiTemplateSnapshot } from "../services/mochi-client";
-import { RaycastAiClient } from "../services/raycast-ai-client";
+import { aiSettingsRepository } from "../services/raycast-ai-settings-repository";
 import { CardCacheRepository, upsertCreatedCardBestEffort } from "../storage/card-cache-repository";
 import { CardGenerationContextRepository } from "../storage/card-generation-context-repository";
 
@@ -49,11 +54,10 @@ type Progress = { readonly cardId: string; readonly number: number; readonly tot
 
 const contextRepository = new CardGenerationContextRepository();
 const cardCacheRepository = new CardCacheRepository();
-const aiClient = new RaycastAiClient();
 
 export function BulkRegenerateCards({ template, templates }: BulkRegenerateCardsProps) {
-  const { mochiApiKey } = getPreferenceValues<Preferences>();
-  const client = new MochiClient(mochiApiKey);
+  const preferences = getPreferenceValues<Preferences>();
+  const client = new MochiClient(preferences.mochiApiKey);
   const analysisAbortable = useRef<AbortController | undefined>(undefined);
   const activeController = useRef<AbortController | undefined>(undefined);
   const operationLock = useRef(false);
@@ -108,6 +112,24 @@ export function BulkRegenerateCards({ template, templates }: BulkRegenerateCards
     }
     operationLock.current = true;
     try {
+      let aiClient: AiClient | undefined;
+      try {
+        aiClient = templateUsesAi(template) ? createAiClient(await aiSettingsRepository.get()) : undefined;
+      } catch (error: unknown) {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: "AI Provider Configuration Required",
+          message: errorMessage(error),
+          primaryAction:
+            error instanceof AiProviderError && error.kind === "configuration"
+              ? {
+                  title: "Configure AI Provider",
+                  onAction: () => launchCommand({ name: "configure-ai", type: LaunchType.UserInitiated }),
+                }
+              : undefined,
+        });
+        return;
+      }
       if (requireConfirmation) {
         const confirmed = await confirmAlert({
           icon: Icon.Warning,
@@ -137,7 +159,7 @@ export function BulkRegenerateCards({ template, templates }: BulkRegenerateCards
           if (!original) {
             return { kind: "skipped", reason: "Card is no longer part of this operation." };
           }
-          return reanalyzeAndRegenerate(client, original, mutationSnapshot, signal);
+          return reanalyzeAndRegenerate(client, original, mutationSnapshot, aiClient, signal);
         },
         controller.signal,
         (update) => {
@@ -177,6 +199,7 @@ export function BulkRegenerateCards({ template, templates }: BulkRegenerateCards
     mochiClient: MochiClient,
     original: Extract<BulkCardAnalysis, { readonly kind: "ready" }>,
     mutationSnapshot: Omit<AnalysisData, "analysis">,
+    aiClient: AiClient | undefined,
     signal: AbortSignal
   ): Promise<BulkCardResult> {
     const freshCard = await mochiClient.getCard(original.card.id, signal);

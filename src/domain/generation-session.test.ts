@@ -74,6 +74,30 @@ describe("generation session", () => {
     ]);
   });
 
+  it("reports an AI field error without rendering a preview", async () => {
+    const progress: GenerationProgress[] = [];
+
+    await generateSession(
+      template("<ai>prompt</ai>"),
+      {},
+      { ask: async () => Promise.reject(new Error("Rate limit reached")) },
+      undefined,
+      (entry) => progress.push(entry)
+    );
+
+    expect(progress).toEqual([
+      { kind: "substituting-fields" },
+      { kind: "generating-ai-fields", total: 1 },
+      {
+        kind: "ai-field-finished",
+        number: 1,
+        total: 1,
+        succeeded: false,
+        errorMessage: "Rate limit reached",
+      },
+    ]);
+  });
+
   it("keeps successful fields when another AI request fails", async () => {
     const client: AiClient = {
       async ask(prompt: string): Promise<string> {
@@ -162,6 +186,12 @@ describe("generation session", () => {
     const session = await generateSession(template("Before<hr>After"), {}, { ask: async () => "unused" });
 
     expect(renderMarkdown(session)).toBe("Before<hr>After");
+  });
+
+  it("generates a template without AI when no AI client is configured", async () => {
+    const session = await generateSession(template("Plain text"), {});
+
+    expect(renderMarkdown(session)).toBe("Plain text");
   });
 
   it("trims only outer empty lines from AI responses", () => {

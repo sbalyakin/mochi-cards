@@ -7,7 +7,9 @@
   "icon": "extension-icon.png",
   "author": "sergey_balyakin",
   "license": "MIT",
-  "categories": ["Productivity"],
+  "categories": [
+    "Productivity"
+  ],
   "preferences": [
     {
       "name": "mochiApiKey",
@@ -18,6 +20,12 @@
     }
   ],
   "commands": [
+    {
+      "name": "configure-ai",
+      "title": "Configure AI Provider",
+      "description": "Choose an AI provider and securely store its API settings.",
+      "mode": "view"
+    },
     {
       "name": "generate-card",
       "title": "Create Card",

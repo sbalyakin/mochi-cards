@@ -63,13 +63,19 @@ export type AiFieldError = { readonly id: string; readonly message: string };
 export type GenerationProgress =
   | { readonly kind: "substituting-fields" }
   | { readonly kind: "generating-ai-fields"; readonly total: number }
-  | { readonly kind: "ai-field-finished"; readonly number: number; readonly total: number; readonly succeeded: boolean }
+  | {
+      readonly kind: "ai-field-finished";
+      readonly number: number;
+      readonly total: number;
+      readonly succeeded: boolean;
+      readonly errorMessage?: string;
+    }
   | { readonly kind: "rendering-preview" };
 
 export async function generateSession(
   template: CardTemplate,
   values: FieldValues,
-  aiClient: AiClient,
+  aiClient?: AiClient,
   signal?: AbortSignal,
   onProgress?: (progress: GenerationProgress) => void
 ): Promise<GeneratedSession> {
@@ -79,11 +85,19 @@ export async function generateSession(
   if (aiSegments.length > 0) {
     onProgress?.({ kind: "generating-ai-fields", total: aiSegments.length });
   }
-  const results = await runAiRequests(aiSegments, aiClient, signal, (number, succeeded) =>
-    onProgress?.({ kind: "ai-field-finished", number, total: aiSegments.length, succeeded })
+  const results = await runAiRequests(aiSegments, aiClient, signal, (number, succeeded, errorMessage) =>
+    onProgress?.({
+      kind: "ai-field-finished",
+      number,
+      total: aiSegments.length,
+      succeeded,
+      ...(errorMessage === undefined ? {} : { errorMessage }),
+    })
   );
   throwIfAborted(signal);
-  onProgress?.({ kind: "rendering-preview" });
+  if (results.every((result) => result.status === "fulfilled")) {
+    onProgress?.({ kind: "rendering-preview" });
+  }
   const resultsById = new Map(aiSegments.map((segment, index) => [segment.id, results[index]]));
   return { mode: "generated", output: generateOutput(prepared, resultsById) };
 }
@@ -483,10 +497,18 @@ function renderMochiValues(fields: readonly MochiTemplateSnapshotField[], values
 
 async function runAiRequests(
   segments: readonly PreparedAiSegment[],
-  aiClient: AiClient,
+  aiClient: AiClient | undefined,
   signal: AbortSignal | undefined,
-  onFieldFinished?: (number: number, succeeded: boolean) => void
+  onFieldFinished?: (number: number, succeeded: boolean, errorMessage?: string) => void
 ): Promise<readonly PromiseSettledResult<string>[]> {
+  if (segments.length > 0 && !aiClient) {
+    throw new Error("An AI client is required for templates with AI fields");
+  }
+  const client = aiClient;
+  if (!client) {
+    return [];
+  }
+  const ask = client.ask.bind(client);
   const results = new Array<PromiseSettledResult<string>>(segments.length);
   let nextIndex = 0;
   async function worker(): Promise<void> {
@@ -496,11 +518,15 @@ async function runAiRequests(
       const segment = segments[index];
       try {
         throwIfAborted(signal);
-        results[index] = { status: "fulfilled", value: await aiClient.ask(segment.prompt, signal) };
+        results[index] = { status: "fulfilled", value: await ask(segment.prompt, signal) };
       } catch (reason: unknown) {
         results[index] = { status: "rejected", reason };
       }
-      onFieldFinished?.(index + 1, results[index].status === "fulfilled");
+      onFieldFinished?.(
+        index + 1,
+        results[index].status === "fulfilled",
+        results[index].status === "rejected" ? errorMessage(results[index].reason) : undefined
+      );
     }
   }
   await Promise.all(Array.from({ length: Math.min(MAX_AI_CONCURRENCY, segments.length) }, worker));
