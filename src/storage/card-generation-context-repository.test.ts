@@ -15,9 +15,11 @@ import {
 
 class MemoryStorage implements CardGenerationContextStorage {
   value: string | undefined;
+  reads = 0;
   writes = 0;
 
   async getItem(): Promise<string | undefined> {
+    this.reads += 1;
     return this.value;
   }
 
@@ -92,6 +94,59 @@ describe("CardGenerationContextRepository", () => {
 
     await expect(repository.get("card-1")).resolves.toMatchObject({ inputValues: { word: "queued" } });
     await save;
+  });
+
+  it("getMany reads storage once and returns only requested records", async () => {
+    const storage = new MemoryStorage();
+    const repository = new CardGenerationContextRepository(storage, () => new Date("2026-07-24T12:00:00.000Z"));
+    const firstSave = repository.save({
+      cardId: "card-1",
+      generationTemplateId: "generation-1",
+      generationTemplateUpdatedAt: "2026-07-24T10:00:00.000Z",
+      mochiTemplateId: "mochi-1",
+      inputValues: { word: "one" },
+    });
+    const secondSave = repository.save({
+      cardId: "card-2",
+      generationTemplateId: "generation-2",
+      generationTemplateUpdatedAt: "2026-07-24T10:00:00.000Z",
+      mochiTemplateId: "mochi-2",
+      inputValues: { word: "two" },
+    });
+    await Promise.all([firstSave, secondSave]);
+    const readsBefore = storage.reads;
+
+    await expect(repository.getMany(["card-2", "missing"])).resolves.toEqual({
+      "card-2": expect.objectContaining({ inputValues: { word: "two" } }),
+    });
+    expect(storage.reads - readsBefore).toBe(1);
+  });
+
+  it("getMany waits for queued mutations", async () => {
+    const storage = new MemoryStorage();
+    const repository = new CardGenerationContextRepository(storage, () => new Date("2026-07-24T12:00:00.000Z"));
+    const save = repository.save({
+      cardId: "card-1",
+      generationTemplateId: "generation-1",
+      generationTemplateUpdatedAt: "2026-07-24T10:00:00.000Z",
+      mochiTemplateId: "mochi-1",
+      inputValues: { word: "queued" },
+    });
+
+    await expect(repository.getMany(["card-1"])).resolves.toEqual({
+      "card-1": expect.objectContaining({ inputValues: { word: "queued" } }),
+    });
+    await save;
+  });
+
+  it("getMany reports corrupted storage without writing", async () => {
+    const storage = new MemoryStorage();
+    storage.value = "not-json";
+    const repository = new CardGenerationContextRepository(storage);
+
+    await expect(repository.getMany(["card"])).rejects.toBeInstanceOf(CardGenerationContextRepositoryError);
+    expect(storage.value).toBe("not-json");
+    expect(storage.writes).toBe(0);
   });
 
   it.each([

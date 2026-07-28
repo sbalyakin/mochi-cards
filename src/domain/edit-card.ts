@@ -2,7 +2,7 @@ import { classifyMochiField, detectTemplateDrift, mochiFieldValueType } from "./
 import type { CardTemplate, CardTemplateDraft, FieldValue, FieldValues, MochiTemplateSnapshot } from "./template";
 
 type DeckIdentity = { readonly id: string; readonly name: string };
-type CardFields = { readonly fields: readonly { readonly id: string; readonly value: FieldValue }[] };
+export type CardFields = { readonly fields: readonly { readonly id: string; readonly value: FieldValue }[] };
 type CardRevisionSnapshot = CardFields & {
   readonly id: string;
   readonly content: string;
@@ -161,6 +161,52 @@ export function duplicateGenerationTemplateDraft(
   };
 }
 
+export type InputRecoveryIssue = {
+  readonly fieldId: string;
+  readonly fieldName: string;
+  readonly reason: "missing" | "conflict";
+};
+
+export type InputRecovery = {
+  readonly values: FieldValues;
+  readonly issues: readonly InputRecoveryIssue[];
+};
+
+export function recoverInputValues(
+  template: CardTemplate,
+  card: CardFields,
+  context?: CardContextSnapshot
+): InputRecovery {
+  const issues: InputRecoveryIssue[] = [];
+  const values: Record<string, FieldValue> = {};
+  const cardValues = new Map(card.fields.map((field) => [field.id, field.value]));
+  const inverseValues = inverseDirectValues(template, cardValues);
+  const contextMatches =
+    context?.generationTemplateId === template.id && context.mochiTemplateId === configuredMochiTemplateId(template);
+
+  for (const field of template.fields) {
+    const contextValue = contextMatches ? context?.inputValues[field.id] : undefined;
+    if (isValueCompatible(field.type, contextValue)) {
+      values[field.id] = contextValue;
+      continue;
+    }
+
+    const inverse = inverseValues.get(field.id);
+    if (inverse?.kind === "value" && isValueCompatible(field.type, inverse.value)) {
+      values[field.id] = inverse.value;
+      continue;
+    }
+    if (inverse?.kind === "conflict") {
+      issues.push({ fieldId: field.id, fieldName: field.name, reason: "conflict" });
+      continue;
+    }
+
+    issues.push({ fieldId: field.id, fieldName: field.name, reason: "missing" });
+  }
+
+  return { values, issues };
+}
+
 export type RestoreInputOptions = {
   readonly context?: CardContextSnapshot;
   readonly previous?: { readonly template: CardTemplate; readonly values: FieldValues };
@@ -177,9 +223,6 @@ export function restoreInputValues(
   options: RestoreInputOptions = {}
 ): RestoredInputValues {
   const warnings: string[] = [];
-  const values: Record<string, FieldValue> = {};
-  const cardValues = new Map(card.fields.map((field) => [field.id, field.value]));
-  const inverseValues = inverseDirectValues(template, cardValues);
   const contextMatches =
     options.context?.generationTemplateId === template.id &&
     options.context.mochiTemplateId === configuredMochiTemplateId(template);
@@ -187,19 +230,15 @@ export function restoreInputValues(
     warnings.push("Generation Template changed since these inputs were saved; matching field IDs were restored.");
   }
 
-  for (const field of template.fields) {
-    const contextValue = contextMatches ? options.context?.inputValues[field.id] : undefined;
-    if (isValueCompatible(field.type, contextValue)) {
-      values[field.id] = contextValue;
-      continue;
-    }
+  const recovery = recoverInputValues(template, card, options.context);
+  const values: Record<string, FieldValue> = { ...recovery.values };
 
-    const inverse = inverseValues.get(field.id);
-    if (inverse?.kind === "value" && isValueCompatible(field.type, inverse.value)) {
-      values[field.id] = inverse.value;
+  for (const field of template.fields) {
+    if (values[field.id] !== undefined) {
       continue;
     }
-    if (inverse?.kind === "conflict") {
+    const recoveryIssue = recovery.issues.find((issue) => issue.fieldId === field.id);
+    if (recoveryIssue?.reason === "conflict") {
       warnings.push(`Conflicting Mochi fields map to "${field.name}"; value was not guessed.`);
     }
 

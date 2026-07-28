@@ -1,7 +1,9 @@
 import { Action, ActionPanel, Alert, confirmAlert, Icon, Keyboard, List, showToast, Toast } from "@raycast/api";
 import { usePromise } from "@raycast/utils";
 
+import { BulkRegenerateCards } from "./components/bulk-regenerate-cards";
 import { TemplateForm } from "./components/template-form";
+import { checkBulkRegenerationAvailability } from "./domain/bulk-card-regeneration";
 import type { CardTemplate } from "./domain/template";
 import { TemplateRepository } from "./storage/template-repository";
 
@@ -71,41 +73,52 @@ export default function ManageTemplates() {
           actions={<ActionPanel>{createAction}</ActionPanel>}
         />
       ) : (
-        templates.map((template) => (
-          <List.Item
-            key={template.id}
-            icon={Icon.Snippets}
-            title={template.name}
-            detail={<TemplateDetail template={template} />}
-            actions={
-              <ActionPanel>
-                <Action.Push
-                  title="Edit Template"
-                  icon={Icon.Pencil}
-                  target={
-                    <TemplateForm repository={repository} template={template} onSaved={refresh} onDeleted={refresh} />
-                  }
-                />
-                {createAction}
-                <Action
-                  title="Duplicate Template"
-                  icon={Icon.Duplicate}
-                  shortcut={{ modifiers: ["cmd"], key: "d" }}
-                  onAction={() => duplicate(template)}
-                />
-                <ActionPanel.Section title="Danger Zone">
-                  <Action
-                    title="Delete Template"
-                    icon={Icon.Trash}
-                    style={Action.Style.Destructive}
-                    shortcut={{ modifiers: ["cmd"], key: "backspace" }}
-                    onAction={() => deleteTemplate(template)}
+        templates.map((template) => {
+          const availability = checkBulkRegenerationAvailability(template, templates);
+
+          return (
+            <List.Item
+              key={template.id}
+              icon={Icon.Snippets}
+              title={template.name}
+              detail={<TemplateDetail template={template} />}
+              actions={
+                <ActionPanel>
+                  <Action.Push
+                    title="Edit Template"
+                    icon={Icon.Pencil}
+                    target={
+                      <TemplateForm repository={repository} template={template} onSaved={refresh} onDeleted={refresh} />
+                    }
                   />
-                </ActionPanel.Section>
-              </ActionPanel>
-            }
-          />
-        ))
+                  {availability.kind === "available" && (
+                    <Action.Push
+                      title="Regenerate Cards…"
+                      icon={Icon.Repeat}
+                      target={<BulkRegenerateCards template={template} templates={templates} />}
+                    />
+                  )}
+                  {createAction}
+                  <Action
+                    title="Duplicate Template"
+                    icon={Icon.Duplicate}
+                    shortcut={{ modifiers: ["cmd"], key: "d" }}
+                    onAction={() => duplicate(template)}
+                  />
+                  <ActionPanel.Section title="Danger Zone">
+                    <Action
+                      title="Delete Template"
+                      icon={Icon.Trash}
+                      style={Action.Style.Destructive}
+                      shortcut={{ modifiers: ["cmd"], key: "backspace" }}
+                      onAction={() => deleteTemplate(template)}
+                    />
+                  </ActionPanel.Section>
+                </ActionPanel>
+              }
+            />
+          );
+        })
       )}
     </List>
   );

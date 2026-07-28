@@ -5,6 +5,7 @@ import {
   createGenerationTemplateDraft,
   duplicateGenerationTemplateDraft,
   mergeUpdateFields,
+  recoverInputValues,
   resolveGenerationTemplate,
   restoreInputValues,
 } from "./edit-card";
@@ -209,6 +210,81 @@ describe("restoreInputValues", () => {
     expect(
       restoreInputValues(next, { fields: [] }, { previous: { template: previous, values: { "old-input": "λόγος" } } })
     ).toEqual({ values: { "new-input": "λόγος" }, warnings: [] });
+  });
+});
+
+describe("recoverInputValues", () => {
+  it("uses compatible context and fills missing values from direct mappings", () => {
+    const generationTemplate = template({
+      fields: [
+        { id: "input", name: "Word", type: "text", required: false, multiline: false },
+        { id: "meaning", name: "Meaning", type: "text", required: false, multiline: false },
+      ],
+      output: {
+        kind: "mochi-template",
+        target: {
+          status: "configured",
+          template: snapshot(),
+          bindings: [
+            { kind: "input", targetFieldId: "front", sourceFieldId: "input" },
+            { kind: "input", targetFieldId: "back", sourceFieldId: "meaning" },
+          ],
+        },
+      },
+    });
+
+    expect(
+      recoverInputValues(
+        generationTemplate,
+        {
+          fields: [
+            { id: "front", value: "card word" },
+            { id: "back", value: "card meaning" },
+          ],
+        },
+        {
+          generationTemplateId: generationTemplate.id,
+          generationTemplateUpdatedAt: "2025-01-01T00:00:00.000Z",
+          mochiTemplateId: "mochi-1",
+          inputValues: { input: "saved word" },
+        }
+      )
+    ).toEqual({ values: { input: "saved word", meaning: "card meaning" }, issues: [] });
+  });
+
+  it("reports missing and conflicting inputs without defaults", () => {
+    const generationTemplate = template({
+      fields: [
+        { id: "input", name: "Word", type: "text", required: false, multiline: false },
+        { id: "missing", name: "Missing", type: "boolean" },
+      ],
+      output: {
+        kind: "mochi-template",
+        target: {
+          status: "configured",
+          template: snapshot(),
+          bindings: [
+            { kind: "input", targetFieldId: "front", sourceFieldId: "input" },
+            { kind: "input", targetFieldId: "back", sourceFieldId: "input" },
+          ],
+        },
+      },
+    });
+
+    expect(
+      recoverInputValues(generationTemplate, {
+        fields: [
+          { id: "front", value: "one" },
+          { id: "back", value: "two" },
+        ],
+      })
+    ).toEqual({
+      values: {},
+      issues: [
+        { fieldId: "input", fieldName: "Word", reason: "conflict" },
+        { fieldId: "missing", fieldName: "Missing", reason: "missing" },
+      ],
+    });
   });
 });
 

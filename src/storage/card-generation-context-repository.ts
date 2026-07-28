@@ -52,6 +52,18 @@ export class CardGenerationContextRepository {
     return Object.prototype.hasOwnProperty.call(records, cardId) ? records[cardId] : undefined;
   }
 
+  async getMany(cardIds: readonly string[]): Promise<Readonly<Record<string, CardGenerationContext>>> {
+    await mutationQueue;
+    const records = (await this.readEnvelope()).records;
+    const result: Record<string, CardGenerationContext> = {};
+    for (const cardId of cardIds) {
+      if (Object.prototype.hasOwnProperty.call(records, cardId)) {
+        result[cardId] = records[cardId];
+      }
+    }
+    return result;
+  }
+
   async getOptional(cardId: string): Promise<OptionalCardGenerationContext> {
     try {
       return { context: await this.get(cardId) };
