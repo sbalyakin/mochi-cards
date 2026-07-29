@@ -27,15 +27,15 @@ Choose the narrowest meaningful scope based on the changed subsystem.
 ## Available scopes
 
 ### 1. Production subsystems
-- `templates`: Manage Templates command, template form, and template CRUD UI.
-- `generation`: Create Card command, variable input form, and generation workflow wiring.
-- `preview`: Markdown preview, regeneration actions, manual edit, copy, and save flows.
+- `templates`: Manage Templates command, template form, template CRUD UI, and Mochi template output mode.
+- `generation`: Create Card command, variable input form, bulk regeneration, deck-scoped creation, and generation workflow wiring.
+- `preview`: Card preview, regeneration actions, manual edit, copy, save flows, and preview metadata UI.
 - `engine`: Template parser, template engine, segment assembly, and variable substitution.
 - `validation`: Template validation rules and structured validation errors.
-- `storage`: Template repository, LocalStorage persistence, and data migrations.
-- `mochi`: Mochi API client, authentication, and card submission.
-- `raycast-ai`: Raycast AI adapter, AI field execution, and access checks.
-- `commands`: Raycast command entry points and manifest wiring when not owned by a specific feature.
+- `storage`: Template repository, LocalStorage persistence, card cache, browse preferences, generation context, catalog cache, and data migrations.
+- `mochi`: Mochi API client, authentication, card submission, deck and template catalog access, and card listing behavior.
+- `ai`: Configure AI Provider command, provider selection, model catalog, thinking levels, API key storage, AI client adapters, and AI field execution.
+- `commands`: Browse Cards command, deck selection, card detail, sorting, filters, duplicate detection, and other Raycast entry points not owned by a specific feature.
 - `ui`: Shared Raycast components or presentation not owned by a more specific subsystem.
 
 ### 2. Architectural fallback scopes
@@ -47,7 +47,7 @@ Choose the narrowest meaningful scope based on the changed subsystem.
 - `tests`: Test-only changes, fixtures, and mocks.
 - `build`: package.json, Raycast manifest, TypeScript config, and build tooling.
 - `scripts`: Repository automation not owned by build, tests, or AI workflows.
-- `ai`: Agent rules, skills, and Cursor, Claude, or Codex configuration.
+- `agents`: Agent rules, skills, and Cursor, Claude, or Codex configuration.
 - `docs`: README, concept/plan updates, and architecture documentation.
 - `chore`: Gitignore, editor metadata, and local maintenance with no more specific scope.
 
@@ -58,9 +58,10 @@ Choose the narrowest meaningful scope based on the changed subsystem.
 - Use the production scope when production code and its tests change together.
 - Use `tests` only when the selected scope contains no production behavior change.
 - Use `build` for package manifests, Raycast extension configuration, and build automation.
-- Use `scripts` only when the script is not better described by `build`, `tests`, or `ai`.
+- Use `scripts` only when the script is not better described by `build`, `tests`, or `agents`.
+- Use `storage` for persistence contracts, migrations, and repository behavior. Prefer `templates`, `commands`, `generation`, `preview`, or `mochi` when persistence is part of a dominant user-facing feature.
 - Use `core` only when multiple architectural layers change comparably and no subsystem dominates.
-- Use `chore` only when no production, architectural, test, build, script, AI, or documentation scope fits.
+- Use `chore` only when no production, architectural, test, build, script, agents, or documentation scope fits.
 - Do not use change types such as `fix`, `refactoring`, or `cleanup` as scopes.
 
 # Message style
@@ -70,10 +71,13 @@ Prefer describing the actual behavioral or architectural outcome, not low-level 
 # Special cases
 
 For purely local cleanup with no meaningful subsystem, use:
-- chore: Remove unused gitignore patterns
+- chore: Ignore local scripts directory
 
 For documentation-only changes, use:
-- docs: Document Mochi API key setup in README
+- docs: Rewrite README as a task-oriented user guide
+
+For AI provider configuration and execution, use:
+- ai: Add configurable global AI providers and model selection
 
 # Body rules
 
@@ -108,10 +112,13 @@ When asked to generate a commit message:
 # Examples
 
 **Good:**
-engine: Parse AI fields into stable generation segments
+ai: Add thinking level selection for supported models
 
 **Good:**
-preview: Regenerate a single AI field without rebuilding the card
+commands: Add card sorting and review filters in Browse Cards
+
+**Good:**
+generation: Add bulk regeneration for template-linked Mochi cards
 
 **Good (Body included for non-obvious migration caveat):**
 storage: Change persisted template envelope version
@@ -119,7 +126,7 @@ storage: Change persisted template envelope version
 - Existing LocalStorage data is not migrated automatically
 
 **Bad (Uses Conventional Commits format):**
-feat(engine): parse AI fields -> **Do not use parentheses or feat/fix prefixes.**
+feat(ai): add thinking levels -> **Do not use parentheses or feat/fix prefixes.**
 
 **Bad (Past tense, ends with period, capitalized scope):**
-Engine: Parsed AI fields. -> **Scope must be lowercase, use imperative mood, no period.**
+Ai: Added thinking levels. -> **Scope must be lowercase, use imperative mood, no period.**

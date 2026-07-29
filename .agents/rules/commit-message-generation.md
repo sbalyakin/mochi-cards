@@ -63,7 +63,7 @@ Stop gathering context as soon as one accurate commit message can be generated.
 Before returning the message, validate every item:
 
 1. The scope is listed in `.agents/rules/commit-message.md`.
-2. Changes under `.agents`, `.cursor`, `.claude`, or `.codex` use `ai`.
+2. Changes under `.agents`, `.cursor`, `.claude`, or `.codex` use `agents`.
 3. The entire first line is 72 characters or fewer.
 4. The subject starts with an uppercase letter, uses imperative mood when
    natural, and has no trailing period.
