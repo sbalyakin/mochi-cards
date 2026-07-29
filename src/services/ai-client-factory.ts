@@ -20,21 +20,21 @@ export function createAiClient(preferences: AiPreferenceValues, options: AiClien
       const apiKey = (preferences.openaiApiKey ?? "").trim();
       const model = (preferences.openaiModel ?? "").trim();
       validateConfiguration("openai", apiKey, model);
-      return new OpenAiAiClient(apiKey, model, options.fetch, options.timeoutMs);
+      return new OpenAiAiClient(apiKey, model, options.fetch, options.timeoutMs, preferences.openaiThinkingLevel);
     }
 
     case "gemini": {
       const apiKey = (preferences.geminiApiKey ?? "").trim();
       const model = (preferences.geminiModel ?? "").trim();
       validateConfiguration("gemini", apiKey, model);
-      return new GeminiAiClient(apiKey, model, options.fetch, options.timeoutMs);
+      return new GeminiAiClient(apiKey, model, options.fetch, options.timeoutMs, preferences.geminiThinkingLevel);
     }
 
     case "anthropic": {
       const apiKey = (preferences.anthropicApiKey ?? "").trim();
       const model = (preferences.anthropicModel ?? "").trim();
       validateConfiguration("anthropic", apiKey, model);
-      return new AnthropicAiClient(apiKey, model, options.fetch, options.timeoutMs);
+      return new AnthropicAiClient(apiKey, model, options.fetch, options.timeoutMs, preferences.anthropicThinkingLevel);
     }
 
     default:

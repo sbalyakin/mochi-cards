@@ -98,6 +98,31 @@ describe("AiModelCatalog", () => {
     });
   });
 
+  it("keeps provider-reported thinking support", async () => {
+    const geminiFetch = jsonFetch({
+      models: [
+        { name: "models/gemma-4-31b-it", supportedGenerationMethods: ["generateContent"], thinking: true },
+        { name: "models/gemini-2.0-flash", supportedGenerationMethods: ["generateContent"], thinking: false },
+      ],
+    });
+    const anthropicFetch = jsonFetch({
+      data: [
+        { type: "model", id: "claude-sonnet-4-6", capabilities: { thinking: { supported: true } } },
+        { type: "model", id: "claude-haiku-4-5", capabilities: { thinking: { supported: false } } },
+      ],
+      has_more: false,
+    });
+
+    await expect(new AiModelCatalog(geminiFetch).list("gemini", API_KEY)).resolves.toEqual([
+      { id: "gemini-2.0-flash", group: "Gemini 2.0", thinkingSupported: false },
+      { id: "gemma-4-31b-it", group: "Gemma", thinkingSupported: true },
+    ]);
+    await expect(new AiModelCatalog(anthropicFetch).list("anthropic", API_KEY)).resolves.toEqual([
+      { id: "claude-sonnet-4-6", group: "Claude 4.6", thinkingSupported: true },
+      { id: "claude-haiku-4-5", group: "Claude 4.5", thinkingSupported: false },
+    ]);
+  });
+
   it.each(["openai", "gemini", "anthropic"] as const)("requires a %s API key", async (provider) => {
     await expect(new AiModelCatalog().list(provider, "  ")).rejects.toMatchObject({
       provider,

@@ -1,17 +1,20 @@
 import type { AiClient } from "../domain/template-engine";
 import { AiProviderError } from "./ai-provider";
 import { httpPost, type AiFetchLike } from "./ai-http-client";
+import { geminiMaxOutputTokens, geminiThinkingConfig, type AiThinkingLevel } from "./ai-thinking";
 
 export class GeminiAiClient implements AiClient {
   constructor(
     private readonly apiKey: string,
     private readonly model: string,
     private readonly fetch: AiFetchLike = globalThis.fetch,
-    private readonly timeoutMs = 60_000
+    private readonly timeoutMs = 60_000,
+    private readonly thinkingLevel?: AiThinkingLevel
   ) {}
 
   async ask(prompt: string, signal?: AbortSignal): Promise<string> {
     const encodedModel = encodeURIComponent(this.model);
+    const thinkingConfig = geminiThinkingConfig(this.model, this.thinkingLevel);
 
     const response = await httpPost("gemini", {
       url: `https://generativelanguage.googleapis.com/v1beta/models/${encodedModel}:generateContent`,
@@ -28,7 +31,8 @@ export class GeminiAiClient implements AiClient {
           },
         ],
         generationConfig: {
-          maxOutputTokens: 4096,
+          maxOutputTokens: geminiMaxOutputTokens(this.model, this.thinkingLevel),
+          ...(thinkingConfig ? { thinkingConfig } : {}),
         },
       },
       signal,

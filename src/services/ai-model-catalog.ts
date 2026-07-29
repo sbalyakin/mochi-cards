@@ -7,6 +7,7 @@ export type AiModel = {
   readonly id: string;
   readonly displayName?: string;
   readonly group?: string;
+  readonly thinkingSupported?: boolean;
 };
 
 export class AiModelCatalog {
@@ -91,6 +92,7 @@ export class AiModelCatalog {
             id,
             group: geminiModelGroup(id),
             ...(typeof model.displayName === "string" ? { displayName: model.displayName } : {}),
+            ...(typeof model.thinking === "boolean" ? { thinkingSupported: model.thinking } : {}),
           });
         }
       }
@@ -131,6 +133,7 @@ export class AiModelCatalog {
             id: model.id,
             group: claudeModelGroup(model.id),
             ...(typeof model.display_name === "string" ? { displayName: model.display_name } : {}),
+            ...optionalThinkingSupport(model),
           });
         }
       }
@@ -339,4 +342,12 @@ function optionalString(value: unknown): string | undefined {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function optionalThinkingSupport(
+  model: Record<string, unknown>
+): Pick<AiModel, "thinkingSupported"> | Record<never, never> {
+  const thinking =
+    isRecord(model.capabilities) && isRecord(model.capabilities.thinking) ? model.capabilities.thinking : undefined;
+  return thinking && typeof thinking.supported === "boolean" ? { thinkingSupported: thinking.supported } : {};
 }

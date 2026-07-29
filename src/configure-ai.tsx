@@ -22,6 +22,7 @@ import {
 import { humanizeAiModelId } from "./services/ai-model-display-name";
 import { AI_PROVIDER_DISPLAY_NAMES, type AiPreferenceValues, type AiProvider } from "./services/ai-provider";
 import { aiSettingsRepository } from "./services/raycast-ai-settings-repository";
+import { aiThinkingLevels, supportsAiThinking, type AiThinkingLevel } from "./services/ai-thinking";
 
 const EMPTY_SETTINGS: AiPreferenceValues = { aiProvider: "raycast" };
 const modelCatalog = new AiModelCatalog();
@@ -232,6 +233,7 @@ function ModelList({
   readonly settings: AiPreferenceValues;
   readonly onSelected: (settings: AiPreferenceValues) => void;
 }) {
+  const { push } = useNavigation();
   const [searchText, setSearchText] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const currentModel = selectedModel(settings);
@@ -258,7 +260,7 @@ function ModelList({
           ? claudeModelSections(availableModels)
           : [{ title: `Text Models (${availableModels.length})`, models: availableModels }];
 
-  async function selectModel(modelId: string, modelName?: string): Promise<void> {
+  async function selectModel(modelId: string, modelName?: string, thinkingSupported?: boolean): Promise<void> {
     if (isSaving) {
       return;
     }
@@ -267,17 +269,28 @@ function ModelList({
       return;
     }
     const normalizedModelName = modelName?.trim() || humanizeAiModelId(normalizedModel);
+    const supportsThinking = thinkingSupported ?? supportsAiThinking(provider, normalizedModel);
+    const previousThinkingLevel = thinkingLevelFor(settings, provider);
+    const nextThinkingLevel =
+      supportsThinking &&
+      previousThinkingLevel &&
+      aiThinkingLevels(provider, normalizedModel).includes(previousThinkingLevel)
+        ? previousThinkingLevel
+        : undefined;
+    const nextSettings = withThinkingLevel(
+      withModel(settings, provider, normalizedModel, normalizedModelName, supportsThinking),
+      provider,
+      nextThinkingLevel
+    );
     setIsSaving(true);
     try {
-      const saved = await aiSettingsRepository.save(
-        withModel(settings, provider, normalizedModel, normalizedModelName)
-      );
+      if (supportsThinking) {
+        push(<ThinkingForm provider={provider} settings={nextSettings} onSelected={onSelected} />);
+        return;
+      }
+      const saved = await aiSettingsRepository.save(nextSettings);
       onSelected(saved);
-      await showToast({
-        style: Toast.Style.Success,
-        title: `${AI_PROVIDER_DISPLAY_NAMES[provider]} Selected`,
-        message: `Using ${normalizedModel}`,
-      });
+      await showToast({ style: Toast.Style.Success, title: `${AI_PROVIDER_DISPLAY_NAMES[provider]} Selected` });
       await popToRoot();
     } catch (error: unknown) {
       await showToast({
@@ -315,7 +328,13 @@ function ModelList({
                 <Action
                   title="Use Model"
                   icon={Icon.Checkmark}
-                  onAction={() => selectModel(currentModel, currentModelName ?? humanizeAiModelId(currentModel))}
+                  onAction={() =>
+                    selectModel(
+                      currentModel,
+                      currentModelName ?? humanizeAiModelId(currentModel),
+                      currentModelDetails?.thinkingSupported
+                    )
+                  }
                 />
                 <Action.Push title="Enter Model ID Manually" icon={Icon.Pencil} target={manualModelForm} />
               </ActionPanel>
@@ -345,6 +364,70 @@ function ModelList({
         />
       </List.Section>
     </List>
+  );
+}
+
+function ThinkingForm({
+  provider,
+  settings,
+  onSelected,
+}: {
+  readonly provider: ExternalAiProvider;
+  readonly settings: AiPreferenceValues;
+  readonly onSelected: (settings: AiPreferenceValues) => void;
+}) {
+  const [thinkingLevel, setThinkingLevel] = useState<AiThinkingLevel | undefined>(thinkingLevelFor(settings, provider));
+  const [isSaving, setIsSaving] = useState(false);
+
+  async function save(): Promise<void> {
+    if (isSaving) {
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const saved = await aiSettingsRepository.save(withThinkingLevel(settings, provider, thinkingLevel));
+      onSelected(saved);
+      await showToast({ style: Toast.Style.Success, title: `${AI_PROVIDER_DISPLAY_NAMES[provider]} Selected` });
+      await popToRoot();
+    } catch (error: unknown) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Could Not Save AI Settings",
+        message: errorMessage(error),
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <Form
+      isLoading={isSaving}
+      navigationTitle="Configure Thinking"
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm title="Use Model" icon={Icon.Checkmark} onSubmit={save} />
+        </ActionPanel>
+      }
+    >
+      <Form.Description
+        title="Model"
+        text={modelNameFor(settings, provider) ?? humanizeAiModelId(modelFor(settings, provider) ?? "")}
+      />
+      <Form.Dropdown
+        id="thinkingLevel"
+        title="Thinking"
+        value={thinkingLevel ?? "default"}
+        onChange={(value) =>
+          setThinkingLevel(aiThinkingLevels(provider, modelFor(settings, provider)).find((level) => level === value))
+        }
+      >
+        <Form.Dropdown.Item title="Provider Default" value="default" />
+        {aiThinkingLevels(provider, modelFor(settings, provider)).map((level) => (
+          <Form.Dropdown.Item key={level} title={level[0].toUpperCase() + level.slice(1)} value={level} />
+        ))}
+      </Form.Dropdown>
+    </Form>
   );
 }
 
@@ -445,7 +528,7 @@ function ModelSection({
   readonly models: readonly AiModel[];
   readonly title: string;
   readonly manualModelForm: ReactElement;
-  readonly onSelect: (modelId: string, modelName?: string) => Promise<void>;
+  readonly onSelect: (modelId: string, modelName?: string, thinkingSupported?: boolean) => Promise<void>;
 }) {
   return (
     <List.Section title={title}>
@@ -455,7 +538,11 @@ function ModelSection({
           title={modelTitle(model)}
           actions={
             <ActionPanel>
-              <Action title="Use Model" icon={Icon.Checkmark} onAction={() => onSelect(model.id, modelTitle(model))} />
+              <Action
+                title="Use Model"
+                icon={Icon.Checkmark}
+                onAction={() => onSelect(model.id, modelTitle(model), model.thinkingSupported)}
+              />
               <Action.Push title="Enter Model ID Manually" icon={Icon.Pencil} target={manualModelForm} />
             </ActionPanel>
           }
@@ -602,15 +689,57 @@ function withModel(
   settings: AiPreferenceValues,
   provider: ExternalAiProvider,
   model: string,
-  modelName: string
+  modelName: string,
+  thinkingSupported: boolean
 ): AiPreferenceValues {
   switch (provider) {
     case "openai":
-      return { ...settings, openaiModel: model, openaiModelName: modelName };
+      return {
+        ...settings,
+        openaiModel: model,
+        openaiModelName: modelName,
+        ...(thinkingSupported ? {} : { openaiThinkingLevel: undefined }),
+      };
     case "gemini":
-      return { ...settings, geminiModel: model, geminiModelName: modelName };
+      return {
+        ...settings,
+        geminiModel: model,
+        geminiModelName: modelName,
+        ...(thinkingSupported ? {} : { geminiThinkingLevel: undefined }),
+      };
     case "anthropic":
-      return { ...settings, anthropicModel: model, anthropicModelName: modelName };
+      return {
+        ...settings,
+        anthropicModel: model,
+        anthropicModelName: modelName,
+        ...(thinkingSupported ? {} : { anthropicThinkingLevel: undefined }),
+      };
+  }
+}
+
+function thinkingLevelFor(settings: AiPreferenceValues, provider: ExternalAiProvider): AiThinkingLevel | undefined {
+  switch (provider) {
+    case "openai":
+      return settings.openaiThinkingLevel;
+    case "gemini":
+      return settings.geminiThinkingLevel;
+    case "anthropic":
+      return settings.anthropicThinkingLevel;
+  }
+}
+
+function withThinkingLevel(
+  settings: AiPreferenceValues,
+  provider: ExternalAiProvider,
+  thinkingLevel: AiThinkingLevel | undefined
+): AiPreferenceValues {
+  switch (provider) {
+    case "openai":
+      return { ...settings, openaiThinkingLevel: thinkingLevel };
+    case "gemini":
+      return { ...settings, geminiThinkingLevel: thinkingLevel };
+    case "anthropic":
+      return { ...settings, anthropicThinkingLevel: thinkingLevel };
   }
 }
 

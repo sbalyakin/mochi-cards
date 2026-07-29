@@ -177,6 +177,68 @@ describe.each(adapters)("$provider AI client", (adapter) => {
   });
 });
 
+describe("thinking configuration", () => {
+  it("sends OpenAI reasoning effort", async () => {
+    const fetch = successfulFetch({ output: [{ content: [{ type: "output_text", text: "one" }] }] });
+
+    await new OpenAiAiClient(API_KEY, MODEL, fetch, undefined, "high").ask(PROMPT);
+
+    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toMatchObject({ reasoning: { effort: "high" } });
+    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toMatchObject({ max_output_tokens: 32768 });
+  });
+
+  it("sends no-reasoning effort to OpenAI", async () => {
+    const fetch = successfulFetch({ output: [{ content: [{ type: "output_text", text: "one" }] }] });
+
+    await new OpenAiAiClient(API_KEY, MODEL, fetch, undefined, "none").ask(PROMPT);
+
+    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toMatchObject({ reasoning: { effort: "none" } });
+  });
+
+  it("sends Gemini thinking configuration", async () => {
+    const fetch = successfulFetch({ candidates: [{ content: { parts: [{ text: "one" }] } }] });
+
+    await new GeminiAiClient(API_KEY, "gemini-3.1-flash", fetch, undefined, "medium").ask(PROMPT);
+
+    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toMatchObject({
+      generationConfig: { thinkingConfig: { thinkingLevel: "medium" } },
+    });
+  });
+
+  it("reserves output tokens beyond a Gemini thinking budget", async () => {
+    const fetch = successfulFetch({ candidates: [{ content: { parts: [{ text: "one" }] } }] });
+
+    await new GeminiAiClient(API_KEY, "gemini-2.5-flash", fetch, undefined, "high").ask(PROMPT);
+
+    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toMatchObject({
+      generationConfig: { maxOutputTokens: 9216, thinkingConfig: { thinkingBudget: 8192 } },
+    });
+  });
+
+  it("sends Anthropic thinking configuration", async () => {
+    const fetch = successfulFetch({ content: [{ type: "text", text: "one" }] });
+
+    await new AnthropicAiClient(API_KEY, MODEL, fetch, undefined, "low").ask(PROMPT);
+
+    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toMatchObject({
+      thinking: { type: "enabled", budget_tokens: 1024 },
+      max_tokens: 8192,
+    });
+  });
+
+  it("uses adaptive thinking for Claude 5", async () => {
+    const fetch = successfulFetch({ content: [{ type: "text", text: "one" }] });
+
+    await new AnthropicAiClient(API_KEY, "claude-sonnet-5", fetch, undefined, "high").ask(PROMPT);
+
+    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toMatchObject({
+      thinking: { type: "adaptive" },
+      output_config: { effort: "high" },
+      max_tokens: 32768,
+    });
+  });
+});
+
 function successfulFetch(body: unknown) {
   return vi.fn<AiFetchLike>().mockResolvedValue(new Response(JSON.stringify(body)));
 }

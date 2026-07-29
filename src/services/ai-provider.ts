@@ -41,10 +41,13 @@ export type AiPreferenceValues = {
   readonly openaiApiKey?: string;
   readonly openaiModel?: string;
   readonly openaiModelName?: string;
+  readonly openaiThinkingLevel?: import("./ai-thinking").AiThinkingLevel;
   readonly geminiApiKey?: string;
   readonly geminiModel?: string;
   readonly geminiModelName?: string;
+  readonly geminiThinkingLevel?: import("./ai-thinking").AiThinkingLevel;
   readonly anthropicApiKey?: string;
   readonly anthropicModel?: string;
   readonly anthropicModelName?: string;
+  readonly anthropicThinkingLevel?: import("./ai-thinking").AiThinkingLevel;
 };

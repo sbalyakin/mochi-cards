@@ -20,12 +20,15 @@ describe("AiSettingsRepository", () => {
       openaiApiKey: "  openai-key  ",
       openaiModel: "  openai-model  ",
       openaiModelName: "  OpenAI Model  ",
+      openaiThinkingLevel: "high",
       geminiApiKey: "  gemini-key  ",
       geminiModel: "  gemini-model  ",
       geminiModelName: "  Gemini Model  ",
+      geminiThinkingLevel: "medium",
       anthropicApiKey: "  anthropic-key  ",
       anthropicModel: "  anthropic-model  ",
       anthropicModelName: "  Claude Model  ",
+      anthropicThinkingLevel: "low",
     });
 
     await expect(repository.get()).resolves.toEqual({
@@ -33,12 +36,15 @@ describe("AiSettingsRepository", () => {
       openaiApiKey: "openai-key",
       openaiModel: "openai-model",
       openaiModelName: "OpenAI Model",
+      openaiThinkingLevel: "high",
       geminiApiKey: "gemini-key",
       geminiModel: "gemini-model",
       geminiModelName: "Gemini Model",
+      geminiThinkingLevel: "medium",
       anthropicApiKey: "anthropic-key",
       anthropicModel: "anthropic-model",
       anthropicModelName: "Claude Model",
+      anthropicThinkingLevel: "low",
     });
   });
 
@@ -73,6 +79,15 @@ describe("AiSettingsRepository", () => {
     await expect(new AiSettingsRepository(fixture.values, fixture.secrets).get()).resolves.toEqual({
       aiProvider: "anthropic",
       anthropicModel: "claude-haiku-4-5-20251001",
+    });
+  });
+
+  it("reads version 2 settings without a thinking level", async () => {
+    const fixture = stores(JSON.stringify({ version: 2, aiProvider: "openai", openaiModel: "gpt-5" }));
+
+    await expect(new AiSettingsRepository(fixture.values, fixture.secrets).get()).resolves.toEqual({
+      aiProvider: "openai",
+      openaiModel: "gpt-5",
     });
   });
 });
