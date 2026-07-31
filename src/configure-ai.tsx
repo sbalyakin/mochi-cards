@@ -424,11 +424,15 @@ function ThinkingForm({
       >
         <Form.Dropdown.Item title="Provider Default" value="default" />
         {aiThinkingLevels(provider, modelFor(settings, provider)).map((level) => (
-          <Form.Dropdown.Item key={level} title={level[0].toUpperCase() + level.slice(1)} value={level} />
+          <Form.Dropdown.Item key={level} title={thinkingLevelTitle(level)} value={level} />
         ))}
       </Form.Dropdown>
     </Form>
   );
+}
+
+function thinkingLevelTitle(level: AiThinkingLevel): string {
+  return level === "none" ? "Off" : level[0].toUpperCase() + level.slice(1);
 }
 
 function geminiModelSections(

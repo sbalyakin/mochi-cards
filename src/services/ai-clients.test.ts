@@ -215,6 +215,16 @@ describe("thinking configuration", () => {
     });
   });
 
+  it("disables Gemini thinking with a zero budget", async () => {
+    const fetch = successfulFetch({ candidates: [{ content: { parts: [{ text: "one" }] } }] });
+
+    await new GeminiAiClient(API_KEY, "gemini-2.5-flash", fetch, undefined, "none").ask(PROMPT);
+
+    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toMatchObject({
+      generationConfig: { thinkingConfig: { thinkingBudget: 0 } },
+    });
+  });
+
   it("sends Anthropic thinking configuration", async () => {
     const fetch = successfulFetch({ content: [{ type: "text", text: "one" }] });
 

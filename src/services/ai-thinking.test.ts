@@ -4,6 +4,8 @@ import {
   aiThinkingLevels,
   anthropicThinkingConfig,
   anthropicMaxTokens,
+  canDisableAiThinking,
+  geminiThinkingConfig,
   geminiMaxOutputTokens,
   openAiMaxOutputTokens,
   supportsAiThinking,
@@ -24,6 +26,21 @@ describe("AI thinking configuration", () => {
   it("exposes thinking for Gemini Flash-Lite", () => {
     expect(supportsAiThinking("gemini", "gemini-2.5-flash-lite")).toBe(true);
     expect(supportsAiThinking("gemini", "gemini-2.5-flash")).toBe(true);
+  });
+
+  it("only offers an off switch where the provider supports it", () => {
+    expect(canDisableAiThinking("openai", "gpt-5.6-sol")).toBe(true);
+    expect(canDisableAiThinking("openai", "gpt-5-pro")).toBe(false);
+    expect(canDisableAiThinking("gemini", "gemini-2.5-flash")).toBe(true);
+    expect(canDisableAiThinking("gemini", "gemini-2.5-pro")).toBe(false);
+    expect(canDisableAiThinking("gemini", "gemini-3-pro-preview")).toBe(false);
+    expect(canDisableAiThinking("anthropic", "claude-sonnet-4-6")).toBe(true);
+  });
+
+  it("disables Gemini thinking with a zero budget", () => {
+    expect(aiThinkingLevels("gemini", "gemini-2.5-flash")).toContain("none");
+    expect(geminiThinkingConfig("gemini-2.5-flash", "none")).toEqual({ thinkingBudget: 0 });
+    expect(aiThinkingLevels("gemini", "gemini-2.5-pro")).not.toContain("none");
   });
 
   it("limits Gemini 3 Pro Preview to its supported thinking levels", () => {

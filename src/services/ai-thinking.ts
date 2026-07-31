@@ -16,7 +16,21 @@ export function aiThinkingLevels(
     case "gemini":
       return geminiThinkingLevels(model);
     case "anthropic":
-      return ["low", "medium", "high"];
+      return canDisableAiThinking("anthropic", model) ? ["none", "low", "medium", "high"] : ["low", "medium", "high"];
+  }
+}
+
+export function canDisableAiThinking(provider: Exclude<AiProvider, "raycast">, model: string | undefined): boolean {
+  if (!model) {
+    return false;
+  }
+  switch (provider) {
+    case "openai":
+      return openAiThinkingLevels(model).includes("none");
+    case "gemini":
+      return /^gemini-2\.5-(?:flash|flash-lite)(?:-|$)/.test(model);
+    case "anthropic":
+      return supportsAiThinking(provider, model);
   }
 }
 
@@ -38,8 +52,11 @@ export function geminiThinkingConfig(
   model: string,
   level: AiThinkingLevel | undefined
 ): Record<string, unknown> | undefined {
-  if (!level || level === "none") {
+  if (!level) {
     return undefined;
+  }
+  if (level === "none") {
+    return canDisableAiThinking("gemini", model) ? { thinkingBudget: 0 } : undefined;
   }
   if (/^gemini-3(?:\.|-)/.test(model)) {
     return { thinkingLevel: level };
@@ -110,7 +127,10 @@ function openAiThinkingLevels(model: string | undefined): readonly AiThinkingLev
 }
 
 function geminiThinkingLevels(model: string | undefined): readonly AiThinkingLevel[] {
-  return /^gemini-3-pro(?:-|$)/.test(model ?? "") ? ["low", "high"] : ["low", "medium", "high"];
+  const levels: readonly AiThinkingLevel[] = /^gemini-3-pro(?:-|$)/.test(model ?? "")
+    ? ["low", "high"]
+    : ["low", "medium", "high"];
+  return canDisableAiThinking("gemini", model) ? ["none", ...levels] : levels;
 }
 
 export function openAiMaxOutputTokens(level: AiThinkingLevel | undefined): number {
