@@ -424,6 +424,7 @@ function CardList({
   const [isSortReversed, setIsSortReversed] = useState(false);
   const [filter, setFilter] = useState<CardListFilter>("all");
   const [isShowingMetadata, setIsShowingMetadata] = useState(true);
+  const [searchText, setSearchText] = useState("");
   const hasCardsRef = useRef(false);
   const hasChangedSortPreference = useRef(false);
   const { data: savedSortPreference } = usePromise((deckId: string) => cardListSortRepository.get(deckId), [deck.id]);
@@ -471,6 +472,8 @@ function CardList({
   const visibleError = isDeckNotFound || cards.length === 0 ? error : undefined;
   const sortedCards = sortCards(cards, sort, isSortReversed);
   const visibleCards = sortedCards.filter((card) => matchesFilter(card, filter));
+  const searchQuery = searchText.trim();
+  const searchedCards = visibleCards.filter((card) => matchesCardSearch(card, searchQuery));
   const isCurrentSortDescending = isSortDescending(sort, isSortReversed);
 
   useEffect(() => {
@@ -551,6 +554,7 @@ function CardList({
 
   return (
     <List
+      filtering={false}
       isLoading={isLoading || isLoadingTemplates || isDeletingCard}
       isShowingDetail
       navigationTitle={
@@ -581,8 +585,10 @@ function CardList({
         </List.Dropdown>
       }
       searchBarPlaceholder="Search cards"
+      searchText={searchText}
+      onSearchTextChange={setSearchText}
     >
-      {visibleError || cards.length === 0 || visibleCards.length === 0 ? (
+      {visibleError || cards.length === 0 || searchedCards.length === 0 ? (
         <List.EmptyView
           icon={visibleError ? Icon.Warning : Icon.Document}
           title={
@@ -592,9 +598,11 @@ function CardList({
                 : "Could Not Load Cards"
               : cards.length === 0
                 ? "No Cards in This Deck"
-                : filter === "reviewed"
-                  ? "No Reviewed Cards"
-                  : "No Cards Without Reviews"
+                : searchQuery
+                  ? "No Matching Cards"
+                  : filter === "reviewed"
+                    ? "No Reviewed Cards"
+                    : "No Cards Without Reviews"
           }
           description={
             visibleError
@@ -603,9 +611,11 @@ function CardList({
                 : mochiErrorMessage(visibleError)
               : cards.length === 0
                 ? "Cards added to this deck will appear here."
-                : filter === "reviewed"
-                  ? "Review a card in Mochi to show it here."
-                  : "Every card in this deck has at least one review."
+                : searchQuery
+                  ? `No cards match "${searchQuery}".`
+                  : filter === "reviewed"
+                    ? "Review a card in Mochi to show it here."
+                    : "Every card in this deck has at least one review."
           }
           actions={
             <ActionPanel>
@@ -614,11 +624,16 @@ function CardList({
               ) : (
                 <>
                   <Action.Push
-                    title="Create Card"
+                    title={searchQuery ? `Create Card "${searchQuery}"` : "Create Card"}
                     icon={Icon.NewDocument}
                     shortcut={Keyboard.Shortcut.Common.New}
                     target={
-                      <GenerateCard deckId={deck.id} onCardCreated={cacheCreatedCard} returnToSourceAfterCardCreated />
+                      <GenerateCard
+                        deckId={deck.id}
+                        initialSearchText={searchQuery || undefined}
+                        onCardCreated={cacheCreatedCard}
+                        returnToSourceAfterCardCreated
+                      />
                     }
                   />
                   <Action
@@ -633,7 +648,7 @@ function CardList({
           }
         />
       ) : (
-        visibleCards.map((card) => {
+        searchedCards.map((card) => {
           const template = card.templateId ? templatesById.get(card.templateId) : undefined;
           return (
             <List.Item
@@ -1317,6 +1332,21 @@ function matchesFilter(card: MochiCard, filter: CardListFilter): boolean {
     return true;
   }
   return filter === "reviewed" ? card.reviews.length > 0 : card.reviews.length === 0;
+}
+
+function matchesCardSearch(card: MochiCard, query: string): boolean {
+  if (!query) {
+    return true;
+  }
+  const searchableText = [
+    cardTitle(card),
+    card.content,
+    ...card.tags,
+    ...card.fields.map((field) => String(field.value)),
+  ]
+    .join("\n")
+    .toLocaleLowerCase();
+  return searchableText.includes(query.toLocaleLowerCase());
 }
 
 function CardDetail({

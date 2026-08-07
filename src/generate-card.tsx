@@ -3,6 +3,7 @@ import { usePromise } from "@raycast/utils";
 import { useState } from "react";
 
 import { GenerationInputForm } from "./components/generation-input-form";
+import type { CardTemplate, FieldValues } from "./domain/template";
 import type { MochiCard } from "./services/mochi-client";
 import { TemplateForm } from "./components/template-form";
 import { TemplateRepository } from "./storage/template-repository";
@@ -11,12 +12,14 @@ const repository = new TemplateRepository();
 
 type GenerateCardProps = {
   readonly deckId?: string;
+  readonly initialSearchText?: string;
   readonly onCardCreated?: (card: MochiCard) => Promise<void> | void;
   readonly returnToSourceAfterCardCreated?: boolean;
 };
 
 export default function GenerateCard({
   deckId,
+  initialSearchText,
   onCardCreated,
   returnToSourceAfterCardCreated = false,
 }: GenerateCardProps = {}) {
@@ -35,6 +38,7 @@ export default function GenerateCard({
     return (
       <GenerationInputForm
         template={activeTemplate}
+        initialValues={initialValuesForWord(activeTemplate, initialSearchText)}
         onCardCreated={onCardCreated}
         returnToSourceAfterCardCreated={returnToSourceAfterCardCreated}
       />
@@ -84,7 +88,13 @@ export default function GenerateCard({
                       <Action.Push
                         title="Create Card Using Template"
                         icon={Icon.NewDocument}
-                        target={<GenerationInputForm template={template} onCardCreated={onCardCreated} />}
+                        target={
+                          <GenerationInputForm
+                            template={template}
+                            initialValues={initialValuesForWord(template, initialSearchText)}
+                            onCardCreated={onCardCreated}
+                          />
+                        }
                       />
                     )
                   ) : null}
@@ -104,6 +114,13 @@ export default function GenerateCard({
       )}
     </List>
   );
+}
+
+function initialValuesForWord(template: CardTemplate, searchText: string | undefined): FieldValues | undefined {
+  const word = searchText?.trim();
+  const textFields = template.fields.filter((field) => field.type === "text");
+  const wordField = textFields.find((field) => field.name.trim().toLowerCase() === "word") ?? textFields[0];
+  return word && wordField ? { [wordField.id]: word } : undefined;
 }
 
 function errorMessage(error: unknown): string {
