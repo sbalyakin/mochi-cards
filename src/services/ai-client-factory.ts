@@ -21,7 +21,7 @@ export type AiClientFactoryOptions = {
 export function createAiClient(preferences: AiPreferenceValues, options: AiClientFactoryOptions = {}): AiClient {
   switch (preferences.aiProvider) {
     case "raycast":
-      return new RaycastAiClient();
+      return new RaycastAiClient(preferences.raycastModel);
 
     case "openai": {
       const apiKey = (preferences.openaiApiKey ?? "").trim();

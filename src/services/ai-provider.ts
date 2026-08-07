@@ -41,6 +41,8 @@ export const AI_PROVIDER_DISPLAY_NAMES: Record<AiProvider, string> = {
 
 export type AiPreferenceValues = {
   readonly aiProvider: AiProvider;
+  readonly raycastModel?: string;
+  readonly raycastModelName?: string;
   readonly openaiApiKey?: string;
   readonly openaiModel?: string;
   readonly openaiModelName?: string;

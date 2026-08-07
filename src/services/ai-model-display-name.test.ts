@@ -16,6 +16,16 @@ describe("AI model display names", () => {
     expect(displayAiModelName({ aiProvider: "raycast" })).toBe("Raycast AI");
   });
 
+  it("uses the selected Raycast AI model name", () => {
+    expect(
+      displayAiModelName({
+        aiProvider: "raycast",
+        raycastModel: "anthropic-claude-sonnet-4-6",
+        raycastModelName: "Anthropic Claude 4.6 Sonnet",
+      })
+    ).toBe("Anthropic Claude 4.6 Sonnet");
+  });
+
   it("uses the selected external model", () => {
     expect(displayAiModelName({ aiProvider: "openai", openaiModel: "gpt-5.6-sol" })).toBe("GPT-5.6 Sol");
   });

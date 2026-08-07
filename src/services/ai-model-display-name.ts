@@ -3,7 +3,10 @@ import { AI_PROVIDER_DISPLAY_NAMES, type AiPreferenceValues } from "./ai-provide
 export function displayAiModelName(settings: AiPreferenceValues): string {
   switch (settings.aiProvider) {
     case "raycast":
-      return AI_PROVIDER_DISPLAY_NAMES.raycast;
+      return (
+        settings.raycastModelName ??
+        (settings.raycastModel ? humanizeAiModelId(settings.raycastModel) : AI_PROVIDER_DISPLAY_NAMES.raycast)
+      );
     case "openai":
       return (
         settings.openaiModelName ??

@@ -17,6 +17,8 @@ describe("AiSettingsRepository", () => {
 
     await repository.save({
       aiProvider: "openai",
+      raycastModel: "  openai-gpt-5-mini  ",
+      raycastModelName: "  OpenAI GPT-5 Mini  ",
       openaiApiKey: "  openai-key  ",
       openaiModel: "  openai-model  ",
       openaiModelName: "  OpenAI Model  ",
@@ -33,6 +35,8 @@ describe("AiSettingsRepository", () => {
 
     await expect(repository.get()).resolves.toEqual({
       aiProvider: "openai",
+      raycastModel: "openai-gpt-5-mini",
+      raycastModelName: "OpenAI GPT-5 Mini",
       openaiApiKey: "openai-key",
       openaiModel: "openai-model",
       openaiModelName: "OpenAI Model",

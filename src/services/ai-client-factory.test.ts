@@ -10,6 +10,8 @@ import { RaycastAiClient } from "./raycast-ai-client";
 
 vi.mock("./raycast-ai-client", () => ({
   RaycastAiClient: class MockRaycastAiClient {
+    constructor(readonly model?: string) {}
+
     async ask(): Promise<string> {
       return "mock response";
     }
@@ -19,6 +21,12 @@ vi.mock("./raycast-ai-client", () => ({
 describe("createAiClient", () => {
   it("creates the default Raycast adapter", () => {
     expect(createAiClient({ aiProvider: "raycast" })).toBeInstanceOf(RaycastAiClient);
+  });
+
+  it("passes the selected model to the Raycast adapter", () => {
+    expect(createAiClient({ aiProvider: "raycast", raycastModel: "anthropic-claude-sonnet-4-6" })).toMatchObject({
+      model: "anthropic-claude-sonnet-4-6",
+    });
   });
 
   it.each([

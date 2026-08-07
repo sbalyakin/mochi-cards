@@ -18,7 +18,7 @@ Create and edit [Mochi](https://mochi.cards/) flashcards from Raycast with reusa
 - In Mochi, open **Account Settings** to view and manage your API keys.
 - Add a Mochi API key in the extension preferences in Raycast. Raycast stores it as a password preference.
 - Run **Configure AI Provider** to select one global provider for all templates: Raycast AI, OpenAI API, Google Gemini API, Anthropic Claude API, or a Custom AI provider.
-- Raycast AI is the default and requires Raycast AI access only when a template contains `<ai>` blocks.
+- Raycast AI is the default and requires Raycast AI access only when a template contains `<ai>` blocks. Choose its model in **Configure AI Provider**; this selection is separate from Raycast AI Commands.
 - For an external provider, enter its API key and choose a model from the provider's searchable model list. You can also enter a model ID manually when it is not listed.
 - Choosing a model validates the API key by loading the models available to it. API keys are stored in macOS Keychain; model IDs and the selected provider are stored in Raycast extension storage.
 - Settings for inactive providers remain saved and reappear when you switch back to them.

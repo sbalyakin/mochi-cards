@@ -20,8 +20,10 @@ export interface AiSettingsSecretStore {
 }
 
 type StoredAiSettings = {
-  readonly version: 4;
+  readonly version: 5;
   readonly aiProvider: AiProvider;
+  readonly raycastModel?: string;
+  readonly raycastModelName?: string;
   readonly openaiModel?: string;
   readonly openaiModelName?: string;
   readonly openaiThinkingLevel?: AiThinkingLevel;
@@ -57,6 +59,8 @@ export class AiSettingsRepository {
     const stored = parseStoredSettings(storedValue);
     return {
       aiProvider: stored.aiProvider,
+      ...optionalValue("raycastModel", stored.raycastModel),
+      ...optionalValue("raycastModelName", stored.raycastModelName),
       ...optionalValue("openaiApiKey", openaiApiKey),
       ...optionalValue("openaiModel", stored.openaiModel),
       ...optionalValue("openaiModelName", stored.openaiModelName),
@@ -89,8 +93,10 @@ export class AiSettingsRepository {
   private async saveTransaction(settings: AiPreferenceValues): Promise<AiPreferenceValues> {
     const normalized = normalizeSettings(settings);
     const stored: StoredAiSettings = {
-      version: 4,
+      version: 5,
       aiProvider: normalized.aiProvider,
+      ...optionalValue("raycastModel", normalized.raycastModel),
+      ...optionalValue("raycastModelName", normalized.raycastModelName),
       ...optionalValue("openaiModel", normalized.openaiModel),
       ...optionalValue("openaiModelName", normalized.openaiModelName),
       ...optionalThinkingValue("openaiThinkingLevel", normalized.openaiThinkingLevel),
@@ -163,7 +169,7 @@ async function rollbackOrThrow(error: unknown, ...rollbacks: readonly Promise<vo
 
 function parseStoredSettings(value: unknown): StoredAiSettings {
   if (value === undefined || value === null) {
-    return { version: 4, aiProvider: "raycast" };
+    return { version: 5, aiProvider: "raycast" };
   }
   if (typeof value !== "string") {
     throw new Error("Stored AI provider settings are invalid");
@@ -172,32 +178,40 @@ function parseStoredSettings(value: unknown): StoredAiSettings {
     const parsed: unknown = JSON.parse(value);
     if (
       !isRecord(parsed) ||
-      (parsed.version !== 1 && parsed.version !== 2 && parsed.version !== 3 && parsed.version !== 4) ||
+      (parsed.version !== 1 &&
+        parsed.version !== 2 &&
+        parsed.version !== 3 &&
+        parsed.version !== 4 &&
+        parsed.version !== 5) ||
       !isAiProvider(parsed.aiProvider)
     ) {
       throw new Error("Stored AI provider settings are invalid");
     }
     return {
-      version: 4,
+      version: 5,
       aiProvider: parsed.aiProvider,
+      ...(parsed.version === 5 ? optionalString("raycastModel", parsed.raycastModel) : {}),
+      ...(parsed.version === 5 ? optionalString("raycastModelName", parsed.raycastModelName) : {}),
       ...optionalString("openaiModel", parsed.openaiModel),
       ...(parsed.version !== 1 ? optionalString("openaiModelName", parsed.openaiModelName) : {}),
-      ...(parsed.version === 3 || parsed.version === 4
+      ...(parsed.version === 3 || parsed.version === 4 || parsed.version === 5
         ? optionalThinkingLevel("openaiThinkingLevel", parsed.openaiThinkingLevel)
         : {}),
       ...optionalString("geminiModel", parsed.geminiModel),
       ...(parsed.version !== 1 ? optionalString("geminiModelName", parsed.geminiModelName) : {}),
-      ...(parsed.version === 3 || parsed.version === 4
+      ...(parsed.version === 3 || parsed.version === 4 || parsed.version === 5
         ? optionalThinkingLevel("geminiThinkingLevel", parsed.geminiThinkingLevel)
         : {}),
       ...optionalString("anthropicModel", parsed.anthropicModel),
       ...(parsed.version !== 1 ? optionalString("anthropicModelName", parsed.anthropicModelName) : {}),
-      ...(parsed.version === 3 || parsed.version === 4
+      ...(parsed.version === 3 || parsed.version === 4 || parsed.version === 5
         ? optionalThinkingLevel("anthropicThinkingLevel", parsed.anthropicThinkingLevel)
         : {}),
-      ...(parsed.version === 4 ? optionalString("customProviderName", parsed.customProviderName) : {}),
-      ...(parsed.version === 4 ? optionalString("customBaseUrl", parsed.customBaseUrl) : {}),
-      ...(parsed.version === 4 ? optionalString("customModel", parsed.customModel) : {}),
+      ...(parsed.version === 4 || parsed.version === 5
+        ? optionalString("customProviderName", parsed.customProviderName)
+        : {}),
+      ...(parsed.version === 4 || parsed.version === 5 ? optionalString("customBaseUrl", parsed.customBaseUrl) : {}),
+      ...(parsed.version === 4 || parsed.version === 5 ? optionalString("customModel", parsed.customModel) : {}),
     };
   } catch (error: unknown) {
     throw new Error("Stored AI provider settings are invalid", { cause: error });
@@ -207,6 +221,8 @@ function parseStoredSettings(value: unknown): StoredAiSettings {
 function normalizeSettings(settings: AiPreferenceValues): AiPreferenceValues {
   return {
     aiProvider: settings.aiProvider,
+    ...optionalValue("raycastModel", trimmed(settings.raycastModel)),
+    ...optionalValue("raycastModelName", trimmed(settings.raycastModelName)),
     ...optionalValue("openaiApiKey", trimmed(settings.openaiApiKey)),
     ...optionalValue("openaiModel", trimmed(settings.openaiModel)),
     ...optionalValue("openaiModelName", trimmed(settings.openaiModelName)),

@@ -29,6 +29,7 @@ import {
   withBearerAuthorization,
 } from "./services/custom-ai-configuration";
 import { aiSettingsRepository } from "./services/raycast-ai-settings-repository";
+import { availableRaycastAiModels, DEFAULT_RAYCAST_AI_MODEL, type RaycastAiModel } from "./services/raycast-ai-client";
 import { aiThinkingLevels, supportsAiThinking, type AiThinkingLevel } from "./services/ai-thinking";
 
 const EMPTY_SETTINGS: AiPreferenceValues = { aiProvider: "raycast" };
@@ -66,7 +67,7 @@ export default function ConfigureAiCommand() {
     }
     setConnectionError(undefined);
     if (settings.aiProvider === "raycast") {
-      await saveRaycastSettings();
+      push(<RaycastModelList settings={settings} onSelected={setSettings} />);
       return;
     }
     if (settings.aiProvider === "custom") {
@@ -186,27 +187,6 @@ export default function ConfigureAiCommand() {
     }
   }
 
-  async function saveRaycastSettings(): Promise<void> {
-    setIsSubmitting(true);
-    try {
-      await aiSettingsRepository.save(settings);
-      await showToast({
-        style: Toast.Style.Success,
-        title: "Raycast AI Selected",
-        message: "No external API key is required.",
-      });
-      await closeMainWindow();
-    } catch (error: unknown) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: "Could Not Save AI Settings",
-        message: errorMessage(error),
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
   return (
     <Form
       isLoading={isLoading || isSubmitting}
@@ -266,10 +246,13 @@ export default function ConfigureAiCommand() {
             <Form.Dropdown.Item title="Custom AI" value="custom" icon={Icon.Globe} />
           </Form.Dropdown>
           {settings.aiProvider === "raycast" ? (
-            <Form.Description
-              title="Raycast AI"
-              text="Uses the AI access included with your Raycast account. No API key or model is required."
-            />
+            <>
+              <Form.Description
+                title="Raycast AI"
+                text="Uses the AI access included with your Raycast account. No API key is required."
+              />
+              <Form.Description title="Current Model" text={settings.raycastModelName ?? "GPT-5 Mini (default)"} />
+            </>
           ) : settings.aiProvider === "custom" ? (
             <CustomProviderFields
               connectionError={connectionError}
@@ -312,7 +295,7 @@ export default function ConfigureAiCommand() {
 
 function submitButtonTitle(provider: AiProvider): string {
   if (provider === "raycast") {
-    return "Use Raycast AI";
+    return "Choose Model";
   }
   if (provider === "custom") {
     return "Save Custom Provider";
@@ -322,7 +305,7 @@ function submitButtonTitle(provider: AiProvider): string {
 
 function submitButtonIcon(provider: AiProvider) {
   if (provider === "raycast") {
-    return Icon.Stars;
+    return Icon.ArrowRight;
   }
   if (provider === "custom") {
     return Icon.Checkmark;
@@ -338,6 +321,98 @@ function selectedProviderDisplayName(settings: AiPreferenceValues): string {
   return settings.aiProvider === "custom"
     ? customDisplayName(settings)
     : AI_PROVIDER_DISPLAY_NAMES[settings.aiProvider];
+}
+
+function RaycastModelList({
+  settings,
+  onSelected,
+}: {
+  readonly settings: AiPreferenceValues;
+  readonly onSelected: (settings: AiPreferenceValues) => void;
+}) {
+  const [searchText, setSearchText] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const models = availableRaycastAiModels();
+  const currentModelId = settings.raycastModel ?? DEFAULT_RAYCAST_AI_MODEL;
+  const currentModel = models.find((model) => model.id === currentModelId);
+  const normalizedSearch = searchText.trim().toLocaleLowerCase();
+  const filteredModels = models.filter(
+    (model) =>
+      model.id !== currentModelId &&
+      (!normalizedSearch ||
+        model.id.toLocaleLowerCase().includes(normalizedSearch) ||
+        model.displayName.toLocaleLowerCase().includes(normalizedSearch))
+  );
+
+  async function selectModel(model: RaycastAiModel): Promise<void> {
+    if (isSaving) {
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const saved = await aiSettingsRepository.save({
+        ...settings,
+        raycastModel: model.id,
+        raycastModelName: model.displayName,
+      });
+      onSelected(saved);
+      await showToast({ style: Toast.Style.Success, title: "Raycast AI Selected", message: model.displayName });
+      await popToRoot();
+    } catch (error: unknown) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Could Not Save AI Settings",
+        message: errorMessage(error),
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <List
+      filtering={false}
+      isLoading={isSaving}
+      navigationTitle="Choose Raycast AI Model"
+      searchBarPlaceholder="Search models…"
+      onSearchTextChange={setSearchText}
+    >
+      {currentModel ? (
+        <List.Section title="Current Model">
+          <RaycastModelItem model={currentModel} selected onSelect={selectModel} />
+        </List.Section>
+      ) : null}
+      <List.Section title={`Models (${filteredModels.length})`}>
+        {filteredModels.map((model) => (
+          <RaycastModelItem key={model.id} model={model} onSelect={selectModel} />
+        ))}
+      </List.Section>
+    </List>
+  );
+}
+
+function RaycastModelItem({
+  model,
+  selected = false,
+  onSelect,
+}: {
+  readonly model: RaycastAiModel;
+  readonly selected?: boolean;
+  readonly onSelect: (model: RaycastAiModel) => Promise<void>;
+}) {
+  return (
+    <List.Item
+      title={model.displayName}
+      subtitle={model.id}
+      icon={selected ? Icon.Checkmark : Icon.Stars}
+      accessories={selected ? [{ text: "Selected" }] : undefined}
+      actions={
+        <ActionPanel>
+          <Action title="Use Model" icon={Icon.Checkmark} onAction={() => onSelect(model)} />
+        </ActionPanel>
+      }
+    />
+  );
 }
 
 function CustomProviderFields({
