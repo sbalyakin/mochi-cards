@@ -20,7 +20,14 @@ import {
   type ExternalAiProvider,
 } from "./services/ai-model-catalog";
 import { humanizeAiModelId } from "./services/ai-model-display-name";
+import { createAiClient } from "./services/ai-client-factory";
 import { AI_PROVIDER_DISPLAY_NAMES, type AiPreferenceValues, type AiProvider } from "./services/ai-provider";
+import {
+  isRemoteHttpBaseUrl,
+  parseCustomHeaders,
+  validateCustomBaseUrl,
+  withBearerAuthorization,
+} from "./services/custom-ai-configuration";
 import { aiSettingsRepository } from "./services/raycast-ai-settings-repository";
 import { aiThinkingLevels, supportsAiThinking, type AiThinkingLevel } from "./services/ai-thinking";
 
@@ -62,6 +69,10 @@ export default function ConfigureAiCommand() {
       await saveRaycastSettings();
       return;
     }
+    if (settings.aiProvider === "custom") {
+      await saveCustomSettings();
+      return;
+    }
 
     const provider = settings.aiProvider;
     const apiKey = selectedApiKey(settings)?.trim();
@@ -78,6 +89,95 @@ export default function ConfigureAiCommand() {
       push(<ModelList models={models} provider={provider} settings={settings} onSelected={setSettings} />);
     } catch (error: unknown) {
       setConnectionError(errorMessage(error));
+    } finally {
+      if (requestController.current === controller) {
+        requestController.current = undefined;
+      }
+      setIsSubmitting(false);
+    }
+  }
+
+  async function saveCustomSettings(): Promise<void> {
+    const displayName = customDisplayName(settings);
+    try {
+      const baseUrl = validateCustomBaseUrl(settings.customBaseUrl ?? "", displayName);
+      if (!(settings.customModel ?? "").trim()) {
+        throw new Error(`${displayName} Model ID is required`);
+      }
+      withBearerAuthorization(
+        parseCustomHeaders(settings.customHeadersJson, displayName),
+        settings.customApiKey,
+        displayName
+      );
+      setIsSubmitting(true);
+      const saved = await aiSettingsRepository.save({ ...settings, customBaseUrl: baseUrl });
+      setSettings(saved);
+      await showToast({ style: Toast.Style.Success, title: `${displayName} Selected` });
+      await closeMainWindow();
+    } catch (error: unknown) {
+      setConnectionError(errorMessage(error));
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function browseCustomModels(): Promise<void> {
+    if (isSubmitting) {
+      return;
+    }
+    setConnectionError(undefined);
+    const displayName = customDisplayName(settings);
+    let baseUrl: string;
+    let headers: Record<string, string>;
+    try {
+      baseUrl = validateCustomBaseUrl(settings.customBaseUrl ?? "", displayName);
+      headers = withBearerAuthorization(
+        parseCustomHeaders(settings.customHeadersJson, displayName),
+        settings.customApiKey,
+        displayName
+      );
+    } catch (error: unknown) {
+      setConnectionError(errorMessage(error));
+      return;
+    }
+
+    setIsSubmitting(true);
+    const controller = new AbortController();
+    requestController.current = controller;
+    try {
+      const models = await modelCatalog.listCustom(baseUrl, headers, displayName, controller.signal);
+      push(<CustomModelList models={models} settings={settings} onSelected={setSettings} />);
+    } catch (error: unknown) {
+      await showToast({ style: Toast.Style.Failure, title: "Could Not Load Models", message: errorMessage(error) });
+    } finally {
+      if (requestController.current === controller) {
+        requestController.current = undefined;
+      }
+      setIsSubmitting(false);
+    }
+  }
+
+  async function testProvider(): Promise<void> {
+    if (isSubmitting) {
+      return;
+    }
+    setConnectionError(undefined);
+    const displayName = selectedProviderDisplayName(settings);
+    setIsSubmitting(true);
+    const controller = new AbortController();
+    requestController.current = controller;
+    try {
+      const client = createAiClient(settings, { timeoutMs: 15_000 });
+      await client.ask("Reply with exactly OK.", controller.signal);
+      await showToast({
+        style: Toast.Style.Success,
+        title: `${displayName} Connection Successful`,
+        message: "Authentication and chat completion succeeded.",
+      });
+    } catch (error: unknown) {
+      const message = errorMessage(error);
+      setConnectionError(message);
+      await showToast({ style: Toast.Style.Failure, title: `${displayName} Connection Failed`, message });
     } finally {
       if (requestController.current === controller) {
         requestController.current = undefined;
@@ -125,11 +225,15 @@ export default function ConfigureAiCommand() {
             <Action title="Try Again" icon={Icon.ArrowClockwise} onAction={revalidate} />
           ) : (
             <Action.SubmitForm
-              title={settings.aiProvider === "raycast" ? "Use Raycast AI" : "Choose Model"}
-              icon={settings.aiProvider === "raycast" ? Icon.Stars : Icon.ArrowRight}
+              title={submitButtonTitle(settings.aiProvider)}
+              icon={submitButtonIcon(settings.aiProvider)}
               onSubmit={submit}
             />
           )}
+          {!error ? <Action title="Test Provider" icon={Icon.CheckCircle} onAction={testProvider} /> : null}
+          {!error && settings.aiProvider === "custom" ? (
+            <Action title="Browse Models" icon={Icon.List} onAction={browseCustomModels} />
+          ) : null}
           {!error && apiKeyUrl ? (
             <Action.OpenInBrowser
               title={`Get ${AI_PROVIDER_DISPLAY_NAMES[settings.aiProvider]} API Key`}
@@ -159,11 +263,21 @@ export default function ConfigureAiCommand() {
             <Form.Dropdown.Item title="OpenAI API" value="openai" icon={Icon.Globe} />
             <Form.Dropdown.Item title="Google Gemini API" value="gemini" icon={Icon.Globe} />
             <Form.Dropdown.Item title="Anthropic Claude API" value="anthropic" icon={Icon.Globe} />
+            <Form.Dropdown.Item title="Custom AI" value="custom" icon={Icon.Globe} />
           </Form.Dropdown>
           {settings.aiProvider === "raycast" ? (
             <Form.Description
               title="Raycast AI"
               text="Uses the AI access included with your Raycast account. No API key or model is required."
+            />
+          ) : settings.aiProvider === "custom" ? (
+            <CustomProviderFields
+              connectionError={connectionError}
+              settings={settings}
+              onChange={(next) => {
+                setConnectionError(undefined);
+                setSettings(next);
+              }}
             />
           ) : (
             <ExternalProviderFields
@@ -184,11 +298,152 @@ export default function ConfigureAiCommand() {
           ) : null}
           <Form.Description
             title="Storage"
-            text="API keys are stored in macOS Keychain. Settings for other providers remain saved when you switch."
+            text={
+              settings.aiProvider === "custom"
+                ? "API key and additional headers are stored in macOS Keychain. Provider name, Base URL, and model ID are stored in Raycast extension storage. Settings for other providers remain saved when you switch."
+                : "API keys are stored in macOS Keychain. Settings for other providers remain saved when you switch."
+            }
           />
         </>
       )}
     </Form>
+  );
+}
+
+function submitButtonTitle(provider: AiProvider): string {
+  if (provider === "raycast") {
+    return "Use Raycast AI";
+  }
+  if (provider === "custom") {
+    return "Save Custom Provider";
+  }
+  return "Choose Model";
+}
+
+function submitButtonIcon(provider: AiProvider) {
+  if (provider === "raycast") {
+    return Icon.Stars;
+  }
+  if (provider === "custom") {
+    return Icon.Checkmark;
+  }
+  return Icon.ArrowRight;
+}
+
+function customDisplayName(settings: AiPreferenceValues): string {
+  return settings.customProviderName?.trim() || AI_PROVIDER_DISPLAY_NAMES.custom;
+}
+
+function selectedProviderDisplayName(settings: AiPreferenceValues): string {
+  return settings.aiProvider === "custom"
+    ? customDisplayName(settings)
+    : AI_PROVIDER_DISPLAY_NAMES[settings.aiProvider];
+}
+
+function CustomProviderFields({
+  connectionError,
+  settings,
+  onChange,
+}: {
+  readonly connectionError?: string;
+  readonly settings: AiPreferenceValues;
+  readonly onChange: (settings: AiPreferenceValues) => void;
+}) {
+  const remoteHttpWarning = isRemoteHttpBaseUrl(settings.customBaseUrl ?? "")
+    ? "Remote HTTP is not allowed because prompts and credentials could be intercepted. Use HTTPS."
+    : undefined;
+  return (
+    <>
+      <Form.TextField
+        id="customProviderName"
+        title="Provider Name"
+        placeholder="e.g. Ollama, LM Studio, OpenRouter"
+        value={settings.customProviderName ?? ""}
+        onChange={(value) => onChange({ ...settings, customProviderName: value })}
+      />
+      <Form.TextField
+        id="customBaseUrl"
+        title="Base URL"
+        placeholder="http://localhost:11434/v1"
+        value={settings.customBaseUrl ?? ""}
+        onChange={(value) => onChange({ ...settings, customBaseUrl: value })}
+      />
+      {remoteHttpWarning ? <Form.Description title="Warning" text={remoteHttpWarning} /> : null}
+      <Form.TextField
+        id="customModel"
+        title="Model ID"
+        placeholder="llama3.1"
+        value={settings.customModel ?? ""}
+        onChange={(value) => onChange({ ...settings, customModel: value })}
+      />
+      <Form.PasswordField
+        id="customApiKey"
+        title="API Key"
+        placeholder="sk-..."
+        value={settings.customApiKey ?? ""}
+        onChange={(value) => onChange({ ...settings, customApiKey: value })}
+      />
+      <Form.Description title="Authentication" text="API key is sent as an Authorization: Bearer header." />
+      <Form.TextArea
+        id="customHeadersJson"
+        title="Additional Headers JSON"
+        placeholder='{"X-Organization": "example"}'
+        value={settings.customHeadersJson ?? ""}
+        onChange={(value) => onChange({ ...settings, customHeadersJson: value })}
+      />
+      <Form.Description
+        title="Additional Headers JSON"
+        text="Optional headers stored in macOS Keychain. Use a flat JSON object of string values. API Key overrides any Authorization header here."
+      />
+      {connectionError ? <Form.Description title="Configuration Error" text={connectionError} /> : null}
+    </>
+  );
+}
+
+function CustomModelList({
+  models,
+  settings,
+  onSelected,
+}: {
+  readonly models: readonly AiModel[];
+  readonly settings: AiPreferenceValues;
+  readonly onSelected: (settings: AiPreferenceValues) => void;
+}) {
+  const { pop } = useNavigation();
+  const [searchText, setSearchText] = useState("");
+  const normalizedSearch = searchText.trim().toLocaleLowerCase();
+  const filteredModels = normalizedSearch
+    ? models.filter((model) => model.id.toLocaleLowerCase().includes(normalizedSearch))
+    : models;
+
+  return (
+    <List
+      filtering={false}
+      navigationTitle="Choose Model"
+      searchBarPlaceholder="Search models…"
+      onSearchTextChange={setSearchText}
+    >
+      <List.Section title={`Models (${filteredModels.length})`}>
+        {filteredModels.map((model) => (
+          <List.Item
+            key={model.id}
+            title={model.displayName || model.id}
+            actions={
+              <ActionPanel>
+                <Action
+                  title="Use Model"
+                  icon={Icon.Checkmark}
+                  onAction={() => {
+                    onSelected({ ...settings, customModel: model.id });
+                    pop();
+                  }}
+                />
+              </ActionPanel>
+            }
+          />
+        ))}
+      </List.Section>
+    </List>
   );
 }
 
@@ -609,6 +864,7 @@ function ManualModelForm({
 function selectedApiKey(settings: AiPreferenceValues): string | undefined {
   switch (settings.aiProvider) {
     case "raycast":
+    case "custom":
       return undefined;
     case "openai":
       return settings.openaiApiKey;
@@ -629,12 +885,15 @@ function selectedModel(settings: AiPreferenceValues): string | undefined {
       return settings.geminiModel;
     case "anthropic":
       return settings.anthropicModel;
+    case "custom":
+      return settings.customModel;
   }
 }
 
 function selectedModelName(settings: AiPreferenceValues): string | undefined {
   switch (settings.aiProvider) {
     case "raycast":
+    case "custom":
       return undefined;
     case "openai":
       return settings.openaiModelName;
@@ -750,6 +1009,7 @@ function withThinkingLevel(
 function providerApiKeyUrl(provider: AiProvider): string | undefined {
   switch (provider) {
     case "raycast":
+    case "custom":
       return undefined;
     case "openai":
       return "https://platform.openai.com/api-keys";
@@ -761,7 +1021,7 @@ function providerApiKeyUrl(provider: AiProvider): string | undefined {
 }
 
 function isAiProvider(value: string): value is AiProvider {
-  return value === "raycast" || value === "openai" || value === "gemini" || value === "anthropic";
+  return value === "raycast" || value === "openai" || value === "gemini" || value === "anthropic" || value === "custom";
 }
 
 function errorMessage(error: unknown): string {

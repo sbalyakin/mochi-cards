@@ -18,6 +18,36 @@ describe("MacOsKeychainSecretStore", () => {
     ]);
   });
 
+  it("reads custom provider headers from the custom-headers account", async () => {
+    const execute = vi.fn(async () => '{"Authorization":"Bearer sk-1"}\n');
+    const store = new MacOsKeychainSecretStore(execute);
+
+    await expect(store.getSecret("custom")).resolves.toBe('{"Authorization":"Bearer sk-1"}');
+    expect(execute).toHaveBeenCalledWith([
+      "find-generic-password",
+      "-a",
+      "custom-headers",
+      "-s",
+      "com.sergey-balyakin.raycast.mochi-cards.ai",
+      "-w",
+    ]);
+  });
+
+  it("reads a custom provider API key from a separate account", async () => {
+    const execute = vi.fn(async () => "secret-key\n");
+    const store = new MacOsKeychainSecretStore(execute);
+
+    await expect(store.getSecret("custom-api-key")).resolves.toBe("secret-key");
+    expect(execute).toHaveBeenCalledWith([
+      "find-generic-password",
+      "-a",
+      "custom-api-key",
+      "-s",
+      "com.sergey-balyakin.raycast.mochi-cards.ai",
+      "-w",
+    ]);
+  });
+
   it("treats a missing key as unconfigured", async () => {
     const execute = vi.fn(async () => {
       throw { code: 44 };

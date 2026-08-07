@@ -1,7 +1,8 @@
 import { httpGet, type AiFetchLike } from "./ai-http-client";
-import { AI_PROVIDER_DISPLAY_NAMES, AiProviderError, type AiProvider } from "./ai-provider";
+import { AI_PROVIDER_DISPLAY_NAMES, AiProviderError, type ApiKeyAiProvider, type AiProvider } from "./ai-provider";
+import { normalizeCustomHeaders, sensitiveHeaderValues, validateCustomBaseUrl } from "./custom-ai-configuration";
 
-export type ExternalAiProvider = Exclude<AiProvider, "raycast">;
+export type ExternalAiProvider = ApiKeyAiProvider;
 
 export type AiModel = {
   readonly id: string;
@@ -145,6 +146,32 @@ export class AiModelCatalog {
       ensureNewPageToken("anthropic", afterId, seenIds);
     } while (hasMore);
     return sortClaudeModels(uniqueSortedModels(models));
+  }
+
+  async listCustom(
+    baseUrl: string,
+    headers: Readonly<Record<string, string>>,
+    displayName: string,
+    signal?: AbortSignal
+  ): Promise<readonly AiModel[]> {
+    const normalizedBaseUrl = validateCustomBaseUrl(baseUrl, displayName);
+    const normalizedHeaders = normalizeCustomHeaders(headers, displayName);
+    const response = await httpGet("custom", {
+      url: `${normalizedBaseUrl}/models`,
+      headers: normalizedHeaders,
+      signal,
+      timeoutMs: this.timeoutMs,
+      fetch: this.fetch,
+      sensitiveValues: sensitiveHeaderValues(normalizedHeaders),
+      displayName,
+      redirect: "error",
+    });
+    if (!isRecord(response) || !Array.isArray(response.data)) {
+      throw invalidModelList("custom", displayName);
+    }
+    return uniqueSortedModels(
+      response.data.flatMap((model) => (isRecord(model) && typeof model.id === "string" ? [{ id: model.id }] : []))
+    );
   }
 
   private get(
@@ -328,11 +355,11 @@ function ensureNewPageToken(provider: ExternalAiProvider, token: string | undefi
   seen.add(token);
 }
 
-function invalidModelList(provider: ExternalAiProvider): AiProviderError {
+function invalidModelList(provider: AiProvider, displayName?: string): AiProviderError {
   return new AiProviderError(
     provider,
     "invalid-response",
-    `${AI_PROVIDER_DISPLAY_NAMES[provider]} returned an invalid model list`
+    `${displayName ?? AI_PROVIDER_DISPLAY_NAMES[provider]} returned an invalid model list`
   );
 }
 

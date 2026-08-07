@@ -8,6 +8,9 @@ const valueStore: AiSettingsValueStore = {
   setItem: async (key, value) => {
     await LocalStorage.setItem(key, value);
   },
+  removeItem: async (key) => {
+    await LocalStorage.removeItem(key);
+  },
 };
 
 export const aiSettingsRepository = new AiSettingsRepository(valueStore, new MacOsKeychainSecretStore());

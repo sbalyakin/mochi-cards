@@ -11,9 +11,12 @@ export type HttpClientOptions = {
   readonly timeoutMs?: number;
   readonly fetch?: AiFetchLike;
   readonly sensitiveValues?: readonly string[];
+  readonly displayName?: string;
+  readonly redirect?: "error" | "follow" | "manual";
 };
 
 const DEFAULT_TIMEOUT_MS = 60_000;
+const CUSTOM_RESPONSE_LIMIT_BYTES = 1024 * 1024;
 
 export async function httpPost(provider: AiProvider, options: HttpClientOptions): Promise<unknown> {
   return httpJson(provider, options);
@@ -36,7 +39,9 @@ async function httpJson(provider: AiProvider, options: HttpClientOptions): Promi
     timeoutMs = DEFAULT_TIMEOUT_MS,
     fetch: fetchImplementation = globalThis.fetch,
     sensitiveValues = [],
+    redirect,
   } = options;
+  const displayName = options.displayName ?? AI_PROVIDER_DISPLAY_NAMES[provider];
   const requestController = new AbortController();
   let timedOut = false;
   const forwardAbort = (): void => requestController.abort(signal?.reason);
@@ -56,15 +61,19 @@ async function httpJson(provider: AiProvider, options: HttpClientOptions): Promi
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: requestController.signal,
+      ...(redirect ? { redirect } : {}),
     });
-    const responseText = await response.text();
+    const responseText =
+      provider === "custom"
+        ? await readLimitedResponseText(response, CUSTOM_RESPONSE_LIMIT_BYTES, displayName)
+        : await response.text();
     if (signal?.aborted) {
       throw signal.reason instanceof Error ? signal.reason : new Error("AI generation was cancelled");
     }
     if (!response.ok) {
-      throw httpStatusError(provider, response.status, responseText, sensitiveValues);
+      throw httpStatusError(provider, displayName, response.status, responseText, sensitiveValues);
     }
-    return parseSuccessResponse(provider, responseText);
+    return parseSuccessResponse(provider, displayName, responseText);
   } catch (error: unknown) {
     if (error instanceof AiProviderError) {
       throw error;
@@ -73,36 +82,52 @@ async function httpJson(provider: AiProvider, options: HttpClientOptions): Promi
       throw new AiProviderError(provider, "aborted", "AI generation was cancelled", { cause: error });
     }
     if (timedOut) {
-      throw new AiProviderError(provider, "timeout", `${AI_PROVIDER_DISPLAY_NAMES[provider]} request timed out`, {
+      throw new AiProviderError(provider, "timeout", `${displayName} request timed out`, {
         cause: error,
       });
     }
-    throw new AiProviderError(
-      provider,
-      "request-failed",
-      `Could not connect to ${AI_PROVIDER_DISPLAY_NAMES[provider]}`,
-      {
-        cause: error,
-      }
-    );
+    throw new AiProviderError(provider, "request-failed", `Could not connect to ${displayName}`, {
+      cause: error,
+    });
   } finally {
     clearTimeout(timeout);
     signal?.removeEventListener("abort", forwardAbort);
   }
 }
 
-function parseSuccessResponse(provider: AiProvider, responseText: string): unknown {
+async function readLimitedResponseText(response: Response, limitBytes: number, displayName: string): Promise<string> {
+  if (!response.body) {
+    return "";
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let totalBytes = 0;
+  let text = "";
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        return text + decoder.decode();
+      }
+      totalBytes += value.byteLength;
+      if (totalBytes > limitBytes) {
+        await reader.cancel().catch(() => undefined);
+        throw new AiProviderError("custom", "invalid-response", `${displayName} response exceeded the 1 MB limit`);
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+function parseSuccessResponse(provider: AiProvider, displayName: string, responseText: string): unknown {
   try {
     return JSON.parse(responseText) as unknown;
   } catch (error: unknown) {
-    throw new AiProviderError(
-      provider,
-      "invalid-response",
-      `${AI_PROVIDER_DISPLAY_NAMES[provider]} returned malformed JSON`,
-      {
-        cause: error,
-      }
-    );
+    throw new AiProviderError(provider, "invalid-response", `${displayName} returned malformed JSON`, {
+      cause: error,
+    });
   }
 }
 
@@ -121,11 +146,11 @@ function statusToErrorKind(status: number): AiProviderErrorKind {
 
 function httpStatusError(
   provider: AiProvider,
+  name: string,
   status: number,
   responseText: string,
   sensitiveValues: readonly string[]
 ): AiProviderError {
-  const name = AI_PROVIDER_DISPLAY_NAMES[provider];
   const kind = statusToErrorKind(status);
   if (kind === "authentication") {
     return new AiProviderError(provider, kind, `${name} rejected the API key`, { status });
@@ -136,7 +161,8 @@ function httpStatusError(
   if (kind === "provider-unavailable") {
     return new AiProviderError(provider, kind, `${name} is temporarily unavailable`, { status });
   }
-  const providerMessage = status === 400 || status === 404 ? extractErrorMessage(responseText) : undefined;
+  const providerMessage =
+    provider !== "custom" && (status === 400 || status === 404) ? extractErrorMessage(responseText) : undefined;
   const safeMessage = providerMessage ? redactAndTruncate(providerMessage, sensitiveValues) : undefined;
   const message = safeMessage
     ? `${name} request failed (${status}): ${safeMessage}`

@@ -1,4 +1,6 @@
-export type AiProvider = "raycast" | "openai" | "gemini" | "anthropic";
+export type AiProvider = "raycast" | "openai" | "gemini" | "anthropic" | "custom";
+
+export type ApiKeyAiProvider = "openai" | "gemini" | "anthropic";
 
 export type AiProviderErrorKind =
   | "configuration"
@@ -34,6 +36,7 @@ export const AI_PROVIDER_DISPLAY_NAMES: Record<AiProvider, string> = {
   openai: "OpenAI",
   gemini: "Google Gemini",
   anthropic: "Anthropic Claude",
+  custom: "Custom AI",
 };
 
 export type AiPreferenceValues = {
@@ -50,4 +53,9 @@ export type AiPreferenceValues = {
   readonly anthropicModel?: string;
   readonly anthropicModelName?: string;
   readonly anthropicThinkingLevel?: import("./ai-thinking").AiThinkingLevel;
+  readonly customProviderName?: string;
+  readonly customBaseUrl?: string;
+  readonly customModel?: string;
+  readonly customApiKey?: string;
+  readonly customHeadersJson?: string;
 };

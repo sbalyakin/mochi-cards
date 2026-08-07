@@ -1,4 +1,4 @@
-import type { AiProvider } from "./ai-provider";
+import type { ApiKeyAiProvider } from "./ai-provider";
 
 export const AI_THINKING_LEVELS = ["none", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 const GPT_5_6_THINKING_LEVELS = ["none", "low", "medium", "high", "xhigh", "max"] as const;
@@ -6,10 +6,7 @@ const GPT_5_4_AND_5_5_THINKING_LEVELS = ["none", "low", "medium", "high", "xhigh
 
 export type AiThinkingLevel = (typeof AI_THINKING_LEVELS)[number];
 
-export function aiThinkingLevels(
-  provider: Exclude<AiProvider, "raycast">,
-  model: string | undefined
-): readonly AiThinkingLevel[] {
+export function aiThinkingLevels(provider: ApiKeyAiProvider, model: string | undefined): readonly AiThinkingLevel[] {
   switch (provider) {
     case "openai":
       return openAiThinkingLevels(model);
@@ -20,7 +17,7 @@ export function aiThinkingLevels(
   }
 }
 
-export function canDisableAiThinking(provider: Exclude<AiProvider, "raycast">, model: string | undefined): boolean {
+export function canDisableAiThinking(provider: ApiKeyAiProvider, model: string | undefined): boolean {
   if (!model) {
     return false;
   }
@@ -34,7 +31,7 @@ export function canDisableAiThinking(provider: Exclude<AiProvider, "raycast">, m
   }
 }
 
-export function supportsAiThinking(provider: Exclude<AiProvider, "raycast">, model: string | undefined): boolean {
+export function supportsAiThinking(provider: ApiKeyAiProvider, model: string | undefined): boolean {
   if (!model) {
     return false;
   }

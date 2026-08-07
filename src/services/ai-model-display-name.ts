@@ -19,6 +19,10 @@ export function displayAiModelName(settings: AiPreferenceValues): string {
         settings.anthropicModelName ??
         (settings.anthropicModel ? humanizeAiModelId(settings.anthropicModel) : AI_PROVIDER_DISPLAY_NAMES.anthropic)
       );
+    case "custom":
+      return settings.customModel
+        ? humanizeAiModelId(settings.customModel)
+        : settings.customProviderName?.trim() || AI_PROVIDER_DISPLAY_NAMES.custom;
   }
 }
 

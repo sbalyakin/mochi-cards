@@ -29,4 +29,18 @@ describe("AI model display names", () => {
       })
     ).toBe("Claude Haiku 4.5");
   });
+
+  it("shows the custom model when set", () => {
+    expect(displayAiModelName({ aiProvider: "custom", customProviderName: "Ollama", customModel: "llama3.1" })).toBe(
+      "Llama3.1"
+    );
+  });
+
+  it("falls back to the custom provider name without a model", () => {
+    expect(displayAiModelName({ aiProvider: "custom", customProviderName: "Ollama" })).toBe("Ollama");
+  });
+
+  it("falls back to Custom AI without a provider name or model", () => {
+    expect(displayAiModelName({ aiProvider: "custom" })).toBe("Custom AI");
+  });
 });

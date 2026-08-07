@@ -3,21 +3,24 @@ import type { AiThinkingLevel } from "./ai-thinking";
 
 const SETTINGS_STORAGE_KEY = "ai-provider-settings-v1";
 const EXTERNAL_PROVIDERS = ["openai", "gemini", "anthropic"] as const;
+const SECRET_PROVIDERS = [...EXTERNAL_PROVIDERS, "custom-api-key", "custom"] as const;
 
 type ExternalAiProvider = (typeof EXTERNAL_PROVIDERS)[number];
+type SecretProvider = ExternalAiProvider | "custom-api-key" | "custom";
 
 export interface AiSettingsValueStore {
   getItem(key: string): Promise<unknown>;
   setItem(key: string, value: string): Promise<void>;
+  removeItem(key: string): Promise<void>;
 }
 
 export interface AiSettingsSecretStore {
-  getSecret(provider: ExternalAiProvider): Promise<string | undefined>;
-  setSecret(provider: ExternalAiProvider, value: string | undefined): Promise<void>;
+  getSecret(provider: SecretProvider): Promise<string | undefined>;
+  setSecret(provider: SecretProvider, value: string | undefined): Promise<void>;
 }
 
 type StoredAiSettings = {
-  readonly version: 3;
+  readonly version: 4;
   readonly aiProvider: AiProvider;
   readonly openaiModel?: string;
   readonly openaiModelName?: string;
@@ -28,21 +31,29 @@ type StoredAiSettings = {
   readonly anthropicModel?: string;
   readonly anthropicModelName?: string;
   readonly anthropicThinkingLevel?: AiThinkingLevel;
+  readonly customProviderName?: string;
+  readonly customBaseUrl?: string;
+  readonly customModel?: string;
 };
 
 export class AiSettingsRepository {
+  private saveQueue: Promise<void> = Promise.resolve();
+
   constructor(
     private readonly values: AiSettingsValueStore,
     private readonly secrets: AiSettingsSecretStore
   ) {}
 
   async get(): Promise<AiPreferenceValues> {
-    const [storedValue, openaiApiKey, geminiApiKey, anthropicApiKey] = await Promise.all([
-      this.values.getItem(SETTINGS_STORAGE_KEY),
-      this.secrets.getSecret("openai"),
-      this.secrets.getSecret("gemini"),
-      this.secrets.getSecret("anthropic"),
-    ]);
+    const [storedValue, openaiApiKey, geminiApiKey, anthropicApiKey, customApiKey, customHeadersJson] =
+      await Promise.all([
+        this.values.getItem(SETTINGS_STORAGE_KEY),
+        this.secrets.getSecret("openai"),
+        this.secrets.getSecret("gemini"),
+        this.secrets.getSecret("anthropic"),
+        this.secrets.getSecret("custom-api-key"),
+        this.secrets.getSecret("custom"),
+      ]);
     const stored = parseStoredSettings(storedValue);
     return {
       aiProvider: stored.aiProvider,
@@ -58,16 +69,27 @@ export class AiSettingsRepository {
       ...optionalValue("anthropicModel", stored.anthropicModel),
       ...optionalValue("anthropicModelName", stored.anthropicModelName),
       ...optionalThinkingValue("anthropicThinkingLevel", stored.anthropicThinkingLevel),
+      ...optionalValue("customProviderName", stored.customProviderName),
+      ...optionalValue("customBaseUrl", stored.customBaseUrl),
+      ...optionalValue("customModel", stored.customModel),
+      ...optionalValue("customApiKey", customApiKey),
+      ...optionalValue("customHeadersJson", customHeadersJson),
     };
   }
 
-  async save(settings: AiPreferenceValues): Promise<AiPreferenceValues> {
-    const normalized = normalizeSettings(settings);
-    await Promise.all(
-      EXTERNAL_PROVIDERS.map((provider) => this.secrets.setSecret(provider, apiKeyFor(normalized, provider)))
+  save(settings: AiPreferenceValues): Promise<AiPreferenceValues> {
+    const operation = this.saveQueue.then(() => this.saveTransaction(settings));
+    this.saveQueue = operation.then(
+      () => undefined,
+      () => undefined
     );
+    return operation;
+  }
+
+  private async saveTransaction(settings: AiPreferenceValues): Promise<AiPreferenceValues> {
+    const normalized = normalizeSettings(settings);
     const stored: StoredAiSettings = {
-      version: 3,
+      version: 4,
       aiProvider: normalized.aiProvider,
       ...optionalValue("openaiModel", normalized.openaiModel),
       ...optionalValue("openaiModelName", normalized.openaiModelName),
@@ -78,15 +100,70 @@ export class AiSettingsRepository {
       ...optionalValue("anthropicModel", normalized.anthropicModel),
       ...optionalValue("anthropicModelName", normalized.anthropicModelName),
       ...optionalThinkingValue("anthropicThinkingLevel", normalized.anthropicThinkingLevel),
+      ...optionalValue("customProviderName", normalized.customProviderName),
+      ...optionalValue("customBaseUrl", normalized.customBaseUrl),
+      ...optionalValue("customModel", normalized.customModel),
     };
-    await this.values.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(stored));
+    const [previousStoredValue, ...previousSecretValues] = await Promise.all([
+      this.values.getItem(SETTINGS_STORAGE_KEY),
+      ...SECRET_PROVIDERS.map((provider) => this.secrets.getSecret(provider)),
+    ]);
+    const previousSecrets = new Map(SECRET_PROVIDERS.map((provider, index) => [provider, previousSecretValues[index]]));
+    const secretWrites = await Promise.allSettled(
+      SECRET_PROVIDERS.map((provider) => this.secrets.setSecret(provider, secretFor(normalized, provider)))
+    );
+    const secretFailure = secretWrites.find((result) => result.status === "rejected");
+    if (secretFailure) {
+      await rollbackOrThrow(secretFailure.reason, this.restoreSecrets(previousSecrets));
+    }
+    try {
+      await this.values.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(stored));
+    } catch (error: unknown) {
+      await rollbackOrThrow(
+        error,
+        this.restoreSecrets(previousSecrets),
+        restoreStoredValue(this.values, previousStoredValue)
+      );
+    }
     return normalized;
   }
+
+  private async restoreSecrets(previousSecrets: ReadonlyMap<SecretProvider, string | undefined>): Promise<void> {
+    const results = await Promise.allSettled(
+      SECRET_PROVIDERS.map((provider) => this.secrets.setSecret(provider, previousSecrets.get(provider)))
+    );
+    const failures = results.filter((result) => result.status === "rejected");
+    if (failures.length > 0) {
+      throw new AggregateError(
+        failures.map((failure) => failure.reason),
+        "Could not restore AI secrets"
+      );
+    }
+  }
+}
+
+async function restoreStoredValue(values: AiSettingsValueStore, previousValue: unknown): Promise<void> {
+  if (typeof previousValue === "string") {
+    await values.setItem(SETTINGS_STORAGE_KEY, previousValue);
+  } else {
+    await values.removeItem(SETTINGS_STORAGE_KEY);
+  }
+}
+
+async function rollbackOrThrow(error: unknown, ...rollbacks: readonly Promise<void>[]): Promise<never> {
+  const results = await Promise.allSettled(rollbacks);
+  const failures = results.filter((result) => result.status === "rejected");
+  if (failures.length > 0) {
+    throw new Error("Could not save AI settings and rollback failed", {
+      cause: new AggregateError([error, ...failures.map((failure) => failure.reason)]),
+    });
+  }
+  throw error;
 }
 
 function parseStoredSettings(value: unknown): StoredAiSettings {
   if (value === undefined || value === null) {
-    return { version: 3, aiProvider: "raycast" };
+    return { version: 4, aiProvider: "raycast" };
   }
   if (typeof value !== "string") {
     throw new Error("Stored AI provider settings are invalid");
@@ -95,23 +172,32 @@ function parseStoredSettings(value: unknown): StoredAiSettings {
     const parsed: unknown = JSON.parse(value);
     if (
       !isRecord(parsed) ||
-      (parsed.version !== 1 && parsed.version !== 2 && parsed.version !== 3) ||
+      (parsed.version !== 1 && parsed.version !== 2 && parsed.version !== 3 && parsed.version !== 4) ||
       !isAiProvider(parsed.aiProvider)
     ) {
       throw new Error("Stored AI provider settings are invalid");
     }
     return {
-      version: 3,
+      version: 4,
       aiProvider: parsed.aiProvider,
       ...optionalString("openaiModel", parsed.openaiModel),
       ...(parsed.version !== 1 ? optionalString("openaiModelName", parsed.openaiModelName) : {}),
-      ...(parsed.version === 3 ? optionalThinkingLevel("openaiThinkingLevel", parsed.openaiThinkingLevel) : {}),
+      ...(parsed.version === 3 || parsed.version === 4
+        ? optionalThinkingLevel("openaiThinkingLevel", parsed.openaiThinkingLevel)
+        : {}),
       ...optionalString("geminiModel", parsed.geminiModel),
       ...(parsed.version !== 1 ? optionalString("geminiModelName", parsed.geminiModelName) : {}),
-      ...(parsed.version === 3 ? optionalThinkingLevel("geminiThinkingLevel", parsed.geminiThinkingLevel) : {}),
+      ...(parsed.version === 3 || parsed.version === 4
+        ? optionalThinkingLevel("geminiThinkingLevel", parsed.geminiThinkingLevel)
+        : {}),
       ...optionalString("anthropicModel", parsed.anthropicModel),
       ...(parsed.version !== 1 ? optionalString("anthropicModelName", parsed.anthropicModelName) : {}),
-      ...(parsed.version === 3 ? optionalThinkingLevel("anthropicThinkingLevel", parsed.anthropicThinkingLevel) : {}),
+      ...(parsed.version === 3 || parsed.version === 4
+        ? optionalThinkingLevel("anthropicThinkingLevel", parsed.anthropicThinkingLevel)
+        : {}),
+      ...(parsed.version === 4 ? optionalString("customProviderName", parsed.customProviderName) : {}),
+      ...(parsed.version === 4 ? optionalString("customBaseUrl", parsed.customBaseUrl) : {}),
+      ...(parsed.version === 4 ? optionalString("customModel", parsed.customModel) : {}),
     };
   } catch (error: unknown) {
     throw new Error("Stored AI provider settings are invalid", { cause: error });
@@ -133,6 +219,11 @@ function normalizeSettings(settings: AiPreferenceValues): AiPreferenceValues {
     ...optionalValue("anthropicModel", trimmed(settings.anthropicModel)),
     ...optionalValue("anthropicModelName", trimmed(settings.anthropicModelName)),
     ...optionalThinkingValue("anthropicThinkingLevel", settings.anthropicThinkingLevel),
+    ...optionalValue("customProviderName", trimmed(settings.customProviderName)),
+    ...optionalValue("customBaseUrl", trimmed(settings.customBaseUrl)),
+    ...optionalValue("customModel", trimmed(settings.customModel)),
+    ...optionalValue("customApiKey", trimmed(settings.customApiKey)),
+    ...optionalValue("customHeadersJson", trimmed(settings.customHeadersJson)),
   };
 }
 
@@ -145,6 +236,16 @@ function apiKeyFor(settings: AiPreferenceValues, provider: ExternalAiProvider): 
     case "anthropic":
       return settings.anthropicApiKey;
   }
+}
+
+function secretFor(settings: AiPreferenceValues, provider: SecretProvider): string | undefined {
+  if (provider === "custom") {
+    return settings.customHeadersJson;
+  }
+  if (provider === "custom-api-key") {
+    return settings.customApiKey;
+  }
+  return apiKeyFor(settings, provider);
 }
 
 function optionalString<Key extends string>(key: Key, value: unknown): Partial<Record<Key, string>> {
@@ -184,7 +285,7 @@ function trimmed(value: string | undefined): string | undefined {
 }
 
 function isAiProvider(value: unknown): value is AiProvider {
-  return value === "raycast" || value === "openai" || value === "gemini" || value === "anthropic";
+  return value === "raycast" || value === "openai" || value === "gemini" || value === "anthropic" || value === "custom";
 }
 
 function isAiThinkingLevel(value: unknown): value is AiThinkingLevel {

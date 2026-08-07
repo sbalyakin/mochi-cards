@@ -7,11 +7,12 @@ const SECURITY_EXECUTABLE = "/usr/bin/security";
 const KEYCHAIN_SERVICE = "com.sergey-balyakin.raycast.mochi-cards.ai";
 
 type SecurityExecutor = (arguments_: readonly string[]) => Promise<string>;
+type SecretProvider = "openai" | "gemini" | "anthropic" | "custom-api-key" | "custom";
 
 export class MacOsKeychainSecretStore implements AiSettingsSecretStore {
   constructor(private readonly execute: SecurityExecutor = executeSecurity) {}
 
-  async getSecret(provider: "openai" | "gemini" | "anthropic"): Promise<string | undefined> {
+  async getSecret(provider: SecretProvider): Promise<string | undefined> {
     try {
       const value = await this.execute([
         "find-generic-password",
@@ -30,7 +31,7 @@ export class MacOsKeychainSecretStore implements AiSettingsSecretStore {
     }
   }
 
-  async setSecret(provider: "openai" | "gemini" | "anthropic", value: string | undefined): Promise<void> {
+  async setSecret(provider: SecretProvider, value: string | undefined): Promise<void> {
     if (!value) {
       await this.deleteSecret(provider);
       return;
@@ -51,7 +52,7 @@ export class MacOsKeychainSecretStore implements AiSettingsSecretStore {
     }
   }
 
-  private async deleteSecret(provider: "openai" | "gemini" | "anthropic"): Promise<void> {
+  private async deleteSecret(provider: SecretProvider): Promise<void> {
     try {
       await this.execute(["delete-generic-password", "-a", accountName(provider), "-s", KEYCHAIN_SERVICE]);
     } catch (error: unknown) {
@@ -73,7 +74,13 @@ async function executeSecurity(arguments_: readonly string[]): Promise<string> {
   return result.stdout;
 }
 
-function accountName(provider: "openai" | "gemini" | "anthropic"): string {
+function accountName(provider: SecretProvider): string {
+  if (provider === "custom") {
+    return "custom-headers";
+  }
+  if (provider === "custom-api-key") {
+    return provider;
+  }
   return `${provider}-api-key`;
 }
 

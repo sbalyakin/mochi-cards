@@ -240,6 +240,96 @@ describe("AiModelCatalog", () => {
   });
 });
 
+describe("AiModelCatalog.listCustom", () => {
+  it("loads and sorts a custom OpenAI-compatible model list", async () => {
+    const fetch = jsonFetch({ data: [{ id: "llama3.1" }, { id: "gemma2" }] });
+
+    await expect(
+      new AiModelCatalog(fetch).listCustom(
+        "http://localhost:11434/v1",
+        { Authorization: `Bearer ${API_KEY}` },
+        "Ollama"
+      )
+    ).resolves.toEqual([{ id: "gemma2" }, { id: "llama3.1" }]);
+
+    const [url, init] = fetch.mock.calls[0];
+    expect(url).toBe("http://localhost:11434/v1/models");
+    expect(init).toMatchObject({ method: "GET", headers: { Authorization: `Bearer ${API_KEY}` } });
+  });
+
+  it("does not filter by model family", async () => {
+    const fetch = jsonFetch({ data: [{ id: "gpt-image-1" }, { id: "text-embedding-3-small" }] });
+
+    await expect(new AiModelCatalog(fetch).listCustom("http://localhost:1234/v1", {}, "LM Studio")).resolves.toEqual([
+      { id: "gpt-image-1" },
+      { id: "text-embedding-3-small" },
+    ]);
+  });
+
+  it("normalizes the base URL before requesting", async () => {
+    const fetch = jsonFetch({ data: [] });
+
+    await new AiModelCatalog(fetch).listCustom("http://localhost:11434/v1/", {}, "Ollama");
+
+    expect(fetch.mock.calls[0][0]).toBe("http://localhost:11434/v1/models");
+  });
+
+  it("rejects a malformed model list", async () => {
+    await expect(
+      new AiModelCatalog(jsonFetch({ unexpected: [] })).listCustom("http://localhost:11434/v1", {}, "Ollama")
+    ).rejects.toMatchObject({
+      provider: "custom",
+      kind: "invalid-response",
+      message: "Ollama returned an invalid model list",
+    });
+  });
+
+  it("rejects an invalid base URL", async () => {
+    await expect(new AiModelCatalog().listCustom("not a url", {}, "Ollama")).rejects.toMatchObject({
+      provider: "custom",
+      kind: "configuration",
+    });
+  });
+
+  it("does not expose header values in provider errors", async () => {
+    const fetch = vi
+      .fn<AiFetchLike>()
+      .mockResolvedValue(new Response(JSON.stringify({ error: { message: `Bad secret-token` } }), { status: 400 }));
+
+    await expect(
+      errorText(
+        new AiModelCatalog(fetch).listCustom("http://localhost:1234/v1", { Authorization: "secret-token" }, "LM Studio")
+      )
+    ).resolves.not.toContain("secret-token");
+  });
+
+  it("redacts a leaked token even when the error omits the Bearer prefix", async () => {
+    const fetch = vi
+      .fn<AiFetchLike>()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ error: { message: "Rejected token secret-token" } }), { status: 400 })
+      );
+
+    await expect(
+      errorText(
+        new AiModelCatalog(fetch).listCustom(
+          "http://localhost:1234/v1",
+          { Authorization: "Bearer secret-token" },
+          "LM Studio"
+        )
+      )
+    ).resolves.not.toContain("secret-token");
+  });
+
+  it("does not follow redirects", async () => {
+    const fetch = jsonFetch({ data: [] });
+
+    await new AiModelCatalog(fetch).listCustom("http://localhost:1234/v1", {}, "LM Studio");
+
+    expect(fetch.mock.calls[0][1]?.redirect).toBe("error");
+  });
+});
+
 function jsonFetch(body: unknown) {
   return vi.fn<AiFetchLike>().mockResolvedValue(new Response(JSON.stringify(body)));
 }
