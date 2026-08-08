@@ -655,7 +655,7 @@ function CardList({
               key={card.id}
               icon={card.archived ? Icon.CircleDisabled : Icon.Document}
               title={cardTitle(card)}
-              keywords={[card.content, ...card.tags, ...card.fields.map((field) => String(field.value))]}
+              keywords={[cardTitle(card)]}
               detail={<CardDetail card={card} deck={deck} template={template} showMetadata={isShowingMetadata} />}
               actions={
                 <ActionPanel>
@@ -1338,15 +1338,7 @@ function matchesCardSearch(card: MochiCard, query: string): boolean {
   if (!query) {
     return true;
   }
-  const searchableText = [
-    cardTitle(card),
-    card.content,
-    ...card.tags,
-    ...card.fields.map((field) => String(field.value)),
-  ]
-    .join("\n")
-    .toLocaleLowerCase();
-  return searchableText.includes(query.toLocaleLowerCase());
+  return cardTitle(card).toLocaleLowerCase().includes(query.toLocaleLowerCase());
 }
 
 function CardDetail({
