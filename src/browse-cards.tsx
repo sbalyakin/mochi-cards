@@ -36,7 +36,12 @@ import {
 import { DeckSelectionRepository } from "./storage/deck-selection-repository";
 import { CardGenerationContextRepository } from "./storage/card-generation-context-repository";
 import { CardCacheRepository } from "./storage/card-cache-repository";
-import { isCardListFilter, CardListSortRepository, type CardListFilter } from "./storage/card-list-sort-repository";
+import {
+  isCardListFilter,
+  CardListSortRepository,
+  type CardListFilter,
+  type CardListSortPreference,
+} from "./storage/card-list-sort-repository";
 import { DeckBrowseOrderRepository } from "./storage/deck-browse-order-repository";
 import {
   MochiCatalogRepository,
@@ -426,6 +431,7 @@ function CardList({
   const [filter, setFilter] = useState<CardListFilter>("all");
   const [isShowingMetadata, setIsShowingMetadata] = useState(true);
   const [searchText, setSearchText] = useState("");
+  const [isIgnoringAccents, setIsIgnoringAccents] = useState(false);
   const hasCardsRef = useRef(false);
   const hasChangedSortPreference = useRef(false);
   const { data: savedSortPreference } = usePromise((deckId: string) => cardListSortRepository.get(deckId), [deck.id]);
@@ -474,7 +480,7 @@ function CardList({
   const sortedCards = sortCards(cards, sort, isSortReversed);
   const visibleCards = sortedCards.filter((card) => matchesFilter(card, filter));
   const searchQuery = searchText.trim();
-  const searchedCards = visibleCards.filter((card) => matchesCardSearch(card, searchQuery));
+  const searchedCards = visibleCards.filter((card) => matchesCardSearch(card, searchQuery, isIgnoringAccents));
   const isCurrentSortDescending = isSortDescending(sort, isSortReversed);
 
   useEffect(() => {
@@ -485,45 +491,43 @@ function CardList({
     setIsSortReversed(savedSortPreference.isReversed);
     setFilter(savedSortPreference.filter);
     setIsShowingMetadata(savedSortPreference.showMetadata ?? true);
+    setIsIgnoringAccents(savedSortPreference.ignoreAccents ?? false);
   }, [savedSortPreference]);
 
-  function setViewPreference(
-    nextSort: CardSort,
-    nextIsReversed: boolean,
-    nextFilter: CardListFilter,
-    nextShowMetadata: boolean
-  ): void {
+  function setViewPreference(patch: Partial<CardListSortPreference>): void {
+    const nextPreference: CardListSortPreference = {
+      sort,
+      isReversed: isSortReversed,
+      filter,
+      showMetadata: isShowingMetadata,
+      ignoreAccents: isIgnoringAccents,
+      ...patch,
+    };
     hasChangedSortPreference.current = true;
-    setSort(nextSort);
-    setIsSortReversed(nextIsReversed);
-    setFilter(nextFilter);
-    setIsShowingMetadata(nextShowMetadata);
-    void cardListSortRepository
-      .save(deck.id, {
-        sort: nextSort,
-        isReversed: nextIsReversed,
-        filter: nextFilter,
-        showMetadata: nextShowMetadata,
-      })
-      .catch((error: unknown) => {
-        void showToast({
-          style: Toast.Style.Failure,
-          title: "Could Not Save Card Sort",
-          message: errorMessage(error),
-        });
+    setSort(nextPreference.sort);
+    setIsSortReversed(nextPreference.isReversed);
+    setFilter(nextPreference.filter);
+    setIsShowingMetadata(nextPreference.showMetadata ?? true);
+    setIsIgnoringAccents(nextPreference.ignoreAccents ?? false);
+    void cardListSortRepository.save(deck.id, nextPreference).catch((error: unknown) => {
+      void showToast({
+        style: Toast.Style.Failure,
+        title: "Could Not Save Card View Options",
+        message: errorMessage(error),
       });
+    });
   }
 
   function selectViewOption(value: string): void {
     if (isCardListFilter(value)) {
-      setViewPreference(sort, isSortReversed, value, isShowingMetadata);
+      setViewPreference({ filter: value });
       return;
     }
     if (isCardSort(value)) {
       if (value === sort) {
-        setViewPreference(sort, !isSortReversed, filter, isShowingMetadata);
+        setViewPreference({ isReversed: !isSortReversed });
       } else {
-        setViewPreference(value, false, filter, isShowingMetadata);
+        setViewPreference({ sort: value, isReversed: false });
       }
     }
   }
@@ -585,8 +589,7 @@ function CardList({
           </List.Dropdown.Section>
         </List.Dropdown>
       }
-      searchBarPlaceholder="Search cards"
-      searchText={searchText}
+      searchBarPlaceholder={isIgnoringAccents ? "Search cards (accents ignored)" : "Search cards"}
       onSearchTextChange={setSearchText}
     >
       {visibleError || cards.length === 0 || searchedCards.length === 0 ? (
@@ -704,12 +707,18 @@ function CardList({
                     title={isShowingMetadata ? "Hide Details" : "Show Details"}
                     icon={isShowingMetadata ? Icon.EyeDisabled : Icon.Eye}
                     shortcut={{ modifiers: ["cmd"], key: "d" }}
-                    onAction={() => setViewPreference(sort, isSortReversed, filter, !isShowingMetadata)}
+                    onAction={() => setViewPreference({ showMetadata: !isShowingMetadata })}
+                  />
+                  <Action
+                    title={isIgnoringAccents ? "Use Accents in Search" : "Ignore Accents in Search"}
+                    icon={Icon.MagnifyingGlass}
+                    shortcut={{ modifiers: ["cmd", "shift"], key: "a" }}
+                    onAction={() => setViewPreference({ ignoreAccents: !isIgnoringAccents })}
                   />
                   <Action
                     title={isSortReversed ? "Use Default Sort Order" : "Reverse Sort Order"}
                     icon={Icon.ChevronUpDown}
-                    onAction={() => setViewPreference(sort, !isSortReversed, filter, isShowingMetadata)}
+                    onAction={() => setViewPreference({ isReversed: !isSortReversed })}
                   />
                   <Action
                     title="Reload Cards"
@@ -1335,11 +1344,11 @@ function matchesFilter(card: MochiCard, filter: CardListFilter): boolean {
   return filter === "reviewed" ? card.reviews.length > 0 : card.reviews.length === 0;
 }
 
-function matchesCardSearch(card: MochiCard, query: string): boolean {
+function matchesCardSearch(card: MochiCard, query: string, ignoreAccents: boolean): boolean {
   if (!query) {
     return true;
   }
-  return matchesSearchText(cardTitle(card), query);
+  return matchesSearchText(cardTitle(card), query, { ignoreAccents });
 }
 
 function CardDetail({

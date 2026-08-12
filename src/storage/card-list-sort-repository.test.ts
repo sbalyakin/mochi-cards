@@ -52,6 +52,28 @@ describe("CardListSortRepository", () => {
     });
   });
 
+  it("stores accent-insensitive search per deck", async () => {
+    await repository.save("deck-1", { sort: "position", isReversed: false, filter: "all", ignoreAccents: true });
+    await repository.save("deck-2", { sort: "position", isReversed: false, filter: "all", ignoreAccents: false });
+
+    await expect(repository.get("deck-1")).resolves.toMatchObject({ ignoreAccents: true });
+    await expect(repository.get("deck-2")).resolves.toMatchObject({ ignoreAccents: false });
+  });
+
+  it("reads preferences saved before accent-insensitive search was tracked", async () => {
+    storage.value = JSON.stringify({
+      version: 1,
+      preferences: { "deck-1": { sort: "position", isReversed: false, filter: "all", showMetadata: true } },
+    });
+
+    await expect(repository.get("deck-1")).resolves.toEqual({
+      sort: "position",
+      isReversed: false,
+      filter: "all",
+      showMetadata: true,
+    });
+  });
+
   it("returns no preference when a deck has not been configured", async () => {
     await expect(repository.get("deck-1")).resolves.toBeUndefined();
   });
