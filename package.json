@@ -43,6 +43,18 @@
       "title": "Browse Cards",
       "description": "Browse cards in selected Mochi decks.",
       "mode": "view"
+    },
+    {
+      "name": "regenerate-cards",
+      "title": "Regenerate Cards",
+      "description": "Pick a Generation Template and regenerate all its Mochi cards in the background.",
+      "mode": "view"
+    },
+    {
+      "name": "regenerate-cards-worker",
+      "title": "Regenerate Cards — Internal",
+      "description": "Runs a bulk card regeneration job started from Manage Templates or Regenerate Cards.",
+      "mode": "no-view"
     }
   ],
   "scripts": {

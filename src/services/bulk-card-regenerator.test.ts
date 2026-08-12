@@ -4,11 +4,16 @@ import type { BulkCardAnalysis } from "../domain/bulk-card-regeneration";
 import type { CardTemplate, MochiTemplateSnapshot } from "../domain/template";
 import type { CardGenerationContext } from "../storage/card-generation-context-repository";
 import {
+  loadLiveTemplate,
+  operationSummary,
+  reanalyzeAndRegenerate,
   regenerateBulkCard,
   runBulkCardBatch,
+  type BulkCardOperationUpdate,
   type BulkCardRegeneratorDependencies,
   type BulkCardResult,
 } from "./bulk-card-regenerator";
+import { MochiClient } from "./mochi-client";
 import type { MochiCard, UpdateMochiCardRequest } from "./mochi-client";
 
 describe("regenerateBulkCard", () => {
@@ -193,6 +198,140 @@ describe("runBulkCardBatch", () => {
     expect(retried.retry).toMatchObject({ status: "updated", result: { card: { name: "attempt-2" } } });
   });
 });
+
+describe("loadLiveTemplate", () => {
+  it("returns the refreshed generation template and live snapshot when there is no drift", async () => {
+    const client = new MochiClient("key", async () => new Response(JSON.stringify(mochiTemplateResponse())));
+
+    const result = await loadLiveTemplate(client, template());
+
+    expect(result.liveMochiTemplate).toEqual(liveSnapshot());
+    expect(result.generationTemplate.output).toMatchObject({
+      kind: "mochi-template",
+      target: { status: "configured", template: liveSnapshot() },
+    });
+  });
+
+  it("throws when a mapped Mochi field was removed", async () => {
+    const client = new MochiClient(
+      "key",
+      async () => new Response(JSON.stringify(mochiTemplateResponse({ omit: "back" })))
+    );
+
+    await expect(loadLiveTemplate(client, template())).rejects.toThrow(/Open Edit Template/);
+  });
+
+  it("throws without calling Mochi when the template output is not configured", async () => {
+    const client = new MochiClient("key", async () => {
+      throw new Error("should not be called");
+    });
+    const unconfigured: CardTemplate = { ...template(), output: { kind: "card-body", templateMode: "none" } };
+
+    await expect(loadLiveTemplate(client, unconfigured)).rejects.toThrow("not configured for a Mochi template");
+  });
+});
+
+describe("reanalyzeAndRegenerate", () => {
+  const mutationSnapshot = { generationTemplate: template(), liveMochiTemplate: liveSnapshot() };
+
+  it("re-fetches the card and context before regenerating", async () => {
+    const fixture = dependencies();
+
+    const result = await reanalyzeAndRegenerate("card-1", mutationSnapshot, fixture.dependencies.aiClient, {
+      ...fixture.dependencies,
+      getContexts: async () => ({}),
+    });
+
+    expect(result).toMatchObject({ kind: "updated" });
+    expect(fixture.updates).toHaveLength(1);
+  });
+
+  it("skips when the fresh context belongs to a different Generation Template", async () => {
+    const fixture = dependencies();
+    const foreignContext = context({ generationTemplateId: "other-generation" });
+
+    const result = await reanalyzeAndRegenerate("card-1", mutationSnapshot, fixture.dependencies.aiClient, {
+      ...fixture.dependencies,
+      getContexts: async () => ({ "card-1": foreignContext }),
+    });
+
+    expect(result).toMatchObject({ kind: "skipped", reason: expect.stringContaining("different Generation Template") });
+    expect(fixture.updates).toEqual([]);
+  });
+
+  it("skips when the fresh card no longer matches the deck or Mochi template", async () => {
+    const fixture = dependencies({ card: card({ deckId: "deck-2" }) });
+
+    const result = await reanalyzeAndRegenerate("card-1", mutationSnapshot, fixture.dependencies.aiClient, {
+      ...fixture.dependencies,
+      getContexts: async () => ({}),
+    });
+
+    expect(result).toEqual({ kind: "skipped", reason: "Card moved or now uses a different Mochi template." });
+    expect(fixture.updates).toEqual([]);
+  });
+});
+
+describe("operationSummary", () => {
+  it("returns undefined while everything is still pending or running for a non-empty analysis", () => {
+    const statuses: Record<string, BulkCardOperationUpdate> = { "card-1": { cardId: "card-1", status: "running" } };
+
+    expect(operationSummary([analysis()], statuses)).toBeUndefined();
+  });
+
+  it("counts skipped-from-analysis cards even before any operation starts", () => {
+    const skippedAnalysis: BulkCardAnalysis = {
+      kind: "skipped",
+      card: card(),
+      reason: "non-empty-unlinked-content",
+      message: "manual content",
+    };
+
+    expect(operationSummary([skippedAnalysis], {})).toBe("0 updated · 0 failed · 1 skipped · 0 cancelled");
+  });
+
+  it("combines analysis skips with terminal operation outcomes", () => {
+    const statuses: Record<string, BulkCardOperationUpdate> = {
+      "card-1": { cardId: "card-1", status: "updated" },
+      "card-2": { cardId: "card-2", status: "failed", message: "boom" },
+      "card-3": { cardId: "card-3", status: "cancelled" },
+    };
+    const skippedAnalysis: BulkCardAnalysis = {
+      kind: "skipped",
+      card: card({ id: "card-4" }),
+      reason: "inputs-unavailable",
+      message: "missing",
+    };
+
+    expect(operationSummary([analysis(), skippedAnalysis], statuses)).toBe(
+      "1 updated · 1 failed · 1 skipped · 1 cancelled"
+    );
+  });
+});
+
+function mochiTemplateResponse(options: { readonly omit?: "back" } = {}) {
+  const fields: Record<string, { readonly id: string; readonly name: string }> = {
+    front: { id: "front", name: "Front" },
+    back: { id: "back", name: "Back" },
+    extra: { id: "extra", name: "Extra" },
+  };
+  if (options.omit) {
+    delete fields[options.omit];
+  }
+  return { id: "mochi-1", name: "Mochi", fields };
+}
+
+function context(overrides: Partial<CardGenerationContext> = {}): CardGenerationContext {
+  return {
+    cardId: "card-1",
+    generationTemplateId: "generation-1",
+    generationTemplateUpdatedAt: "2026-07-28T00:00:00.000Z",
+    mochiTemplateId: "mochi-1",
+    inputValues: { word: "word" },
+    updatedAt: "2026-07-28T00:00:00.000Z",
+    ...overrides,
+  };
+}
 
 function dependencies(
   options: {

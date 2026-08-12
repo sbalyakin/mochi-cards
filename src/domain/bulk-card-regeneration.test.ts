@@ -2,8 +2,35 @@ import { describe, expect, it } from "vitest";
 
 import type { CardGenerationContext } from "../storage/card-generation-context-repository";
 import type { MochiCard } from "../services/mochi-client";
-import { analyzeBulkCards, checkBulkRegenerationAvailability } from "./bulk-card-regeneration";
+import { analyzeBulkCards, checkBulkRegenerationAvailability, parseRegenerationJob } from "./bulk-card-regeneration";
 import type { CardTemplate, MochiFieldBinding } from "./template";
+
+describe("parseRegenerationJob", () => {
+  const job = { templateId: "template-1", cardIds: ["card-1", "card-2"], lockToken: "lease-1" };
+
+  it("accepts a well-formed job", () => {
+    expect(parseRegenerationJob(job)).toEqual(job);
+  });
+
+  it("accepts a job with no cards so the worker can report an empty batch", () => {
+    expect(parseRegenerationJob({ ...job, cardIds: [] })).toEqual({ ...job, cardIds: [] });
+  });
+
+  it.each([
+    ["missing context", undefined],
+    ["null context", null],
+    ["non-object context", "template-1"],
+    ["missing templateId", { cardIds: ["card-1"], lockToken: "lease-1" }],
+    ["empty templateId", { ...job, templateId: "" }],
+    ["missing lockToken", { templateId: "template-1", cardIds: ["card-1"] }],
+    ["empty lockToken", { ...job, lockToken: "" }],
+    ["cardIds not an array", { ...job, cardIds: "card-1" }],
+    ["cardIds with a non-string entry", { ...job, cardIds: ["card-1", 7] }],
+    ["cardIds with an empty entry", { ...job, cardIds: ["card-1", ""] }],
+  ])("rejects %s", (_name, value) => {
+    expect(parseRegenerationJob(value)).toBeUndefined();
+  });
+});
 
 describe("checkBulkRegenerationAvailability", () => {
   it("rejects unsupported and incomplete outputs", () => {

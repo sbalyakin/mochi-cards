@@ -3,6 +3,30 @@ import type { MochiCard } from "../services/mochi-client";
 import { recoverInputValues } from "./edit-card";
 import type { CardTemplate, FieldValues } from "./template";
 
+export type RegenerationJob = {
+  readonly templateId: string;
+  readonly cardIds: readonly string[];
+  readonly lockToken: string;
+};
+
+/** Validates a launch context, which crosses a command boundary as untyped JSON. */
+export function parseRegenerationJob(value: unknown): RegenerationJob | undefined {
+  if (typeof value !== "object" || value === null) {
+    return undefined;
+  }
+  const { templateId, cardIds, lockToken } = value as Record<string, unknown>;
+  if (typeof templateId !== "string" || templateId.length === 0) {
+    return undefined;
+  }
+  if (typeof lockToken !== "string" || lockToken.length === 0) {
+    return undefined;
+  }
+  if (!Array.isArray(cardIds) || cardIds.some((cardId) => typeof cardId !== "string" || cardId.length === 0)) {
+    return undefined;
+  }
+  return { templateId, cardIds: cardIds as readonly string[], lockToken };
+}
+
 export type BulkRegenerationAvailability =
   | { readonly kind: "available"; readonly mochiTemplateId: string }
   | {

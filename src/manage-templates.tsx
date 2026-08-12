@@ -1,13 +1,29 @@
-import { Action, ActionPanel, Alert, confirmAlert, Icon, Keyboard, List, showToast, Toast } from "@raycast/api";
+import {
+  Action,
+  ActionPanel,
+  Alert,
+  confirmAlert,
+  getPreferenceValues,
+  Icon,
+  Keyboard,
+  List,
+  showToast,
+  Toast,
+} from "@raycast/api";
 import { usePromise } from "@raycast/utils";
 
-import { BulkRegenerateCards } from "./components/bulk-regenerate-cards";
+import { RegenerationReport } from "./components/regeneration-report";
 import { TemplateForm } from "./components/template-form";
 import { checkBulkRegenerationAvailability } from "./domain/bulk-card-regeneration";
 import type { CardTemplate } from "./domain/template";
+import { startBulkRegeneration } from "./services/bulk-regeneration-launcher";
+import { MochiClient } from "./services/mochi-client";
 import { TemplateRepository } from "./storage/template-repository";
 
+type Preferences = { readonly mochiApiKey: string };
+
 const repository = new TemplateRepository();
+const client = new MochiClient(getPreferenceValues<Preferences>().mochiApiKey);
 const dateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 export default function ManageTemplates() {
@@ -70,7 +86,12 @@ export default function ManageTemplates() {
           icon={error ? Icon.Warning : Icon.Document}
           title={error ? "Couldn't Load Templates" : "No Templates Yet"}
           description={error ? errorMessage(error) : "Create a Markdown template to make your first card."}
-          actions={<ActionPanel>{createAction}</ActionPanel>}
+          actions={
+            <ActionPanel>
+              {createAction}
+              <Action.Push title="View Last Regeneration Report" icon={Icon.List} target={<RegenerationReport />} />
+            </ActionPanel>
+          }
         />
       ) : (
         templates.map((template) => {
@@ -92,12 +113,13 @@ export default function ManageTemplates() {
                     }
                   />
                   {availability.kind === "available" && (
-                    <Action.Push
+                    <Action
                       title="Regenerate Cards…"
                       icon={Icon.Repeat}
-                      target={<BulkRegenerateCards template={template} templates={templates} />}
+                      onAction={() => startBulkRegeneration(client, template, templates)}
                     />
                   )}
+                  <Action.Push title="View Last Regeneration Report" icon={Icon.List} target={<RegenerationReport />} />
                   {createAction}
                   <Action
                     title="Duplicate Template"

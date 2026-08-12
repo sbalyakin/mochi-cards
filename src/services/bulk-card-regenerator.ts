@@ -1,10 +1,12 @@
-import type { BulkCardAnalysis } from "../domain/bulk-card-regeneration";
+import { analyzeBulkCards, type BulkCardAnalysis } from "../domain/bulk-card-regeneration";
 import { cardChangedSinceOpen, mergeUpdateFields, recoverInputValues } from "../domain/edit-card";
 import { generateSession, getAiFieldErrors, getMochiOutput, isSessionReady } from "../domain/generation-session";
+import { detectTemplateDrift, refreshTemplateSnapshot } from "../domain/mochi-template";
 import type { CardTemplate, MochiTemplateSnapshot } from "../domain/template";
 import type { AiClient } from "../domain/template-engine";
 import type { CardGenerationContext } from "../storage/card-generation-context-repository";
-import type { MochiCard, UpdateMochiCardRequest } from "./mochi-client";
+import type { MochiCard, MochiClient, UpdateMochiCardRequest } from "./mochi-client";
+import { toMochiTemplateSnapshot } from "./mochi-client";
 
 export type BulkCardResult =
   | { readonly kind: "updated"; readonly card: MochiCard; readonly warning?: string }
@@ -192,6 +194,87 @@ export async function runBulkCardBatch(
     }
   }
   return updates;
+}
+
+export type BulkCardTemplateSnapshot = {
+  readonly generationTemplate: CardTemplate;
+  readonly liveMochiTemplate: MochiTemplateSnapshot;
+};
+
+export async function loadLiveTemplate(
+  client: MochiClient,
+  template: CardTemplate,
+  signal?: AbortSignal
+): Promise<BulkCardTemplateSnapshot> {
+  if (template.output.kind !== "mochi-template" || template.output.target.status !== "configured") {
+    throw new Error("Generation Template is not configured for a Mochi template.");
+  }
+  const live = toMochiTemplateSnapshot(await client.getTemplate(template.output.target.template.id, signal));
+  const drift = detectTemplateDrift(template.output.target.template, live, template.output.target.bindings);
+  if (drift.length > 0) {
+    throw new Error(`${drift[0].message}. Open Edit Template and update the field mappings first.`);
+  }
+  return {
+    generationTemplate: {
+      ...template,
+      output: {
+        kind: "mochi-template",
+        target: {
+          ...template.output.target,
+          template: refreshTemplateSnapshot(template.output.target.template, live),
+        },
+      },
+    },
+    liveMochiTemplate: live,
+  };
+}
+
+export async function reanalyzeAndRegenerate(
+  cardId: string,
+  mutationSnapshot: BulkCardTemplateSnapshot,
+  aiClient: AiClient | undefined,
+  dependencies: BulkCardRegeneratorDependencies & {
+    getContexts(cardIds: readonly string[]): Promise<Readonly<Record<string, CardGenerationContext>>>;
+  },
+  signal?: AbortSignal
+): Promise<BulkCardResult> {
+  const freshCard = await dependencies.getCard(cardId, signal);
+  const contexts = await dependencies.getContexts([freshCard.id]);
+  const freshAnalysis = analyzeBulkCards(mutationSnapshot.generationTemplate, [freshCard], contexts)[0];
+  if (!freshAnalysis) {
+    return { kind: "skipped", reason: "Card moved or now uses a different Mochi template." };
+  }
+  if (freshAnalysis.kind === "skipped") {
+    return { kind: "skipped", reason: freshAnalysis.message };
+  }
+  return regenerateBulkCard(
+    freshAnalysis,
+    mutationSnapshot.generationTemplate,
+    mutationSnapshot.liveMochiTemplate,
+    { ...dependencies, aiClient },
+    signal
+  );
+}
+
+export function operationSummary(
+  analysis: readonly BulkCardAnalysis[],
+  statuses: Readonly<Record<string, BulkCardOperationUpdate>>
+): string | undefined {
+  const terminal = Object.values(statuses).filter(
+    (update) => update.status !== "pending" && update.status !== "running"
+  );
+  const skippedFromAnalysis = analysis.filter((item) => item.kind === "skipped").length;
+  const readyCount = analysis.filter((item) => item.kind === "ready").length;
+  if (terminal.length === 0 && (skippedFromAnalysis === 0 || readyCount > 0)) {
+    return undefined;
+  }
+  const updated = terminal.filter(
+    (update) => update.status === "updated" || update.status === "updated-with-warning"
+  ).length;
+  const failed = terminal.filter((update) => update.status === "failed").length;
+  const skipped = skippedFromAnalysis + terminal.filter((update) => update.status === "skipped").length;
+  const cancelled = terminal.filter((update) => update.status === "cancelled").length;
+  return `${updated} updated · ${failed} failed · ${skipped} skipped · ${cancelled} cancelled`;
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {
