@@ -38,4 +38,6 @@ pnpm-debug.log*
 
 /scripts
 
+# Headroom
 /.serena
+/.claude/.headroom_wrap_marker.json
