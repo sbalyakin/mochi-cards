@@ -22,6 +22,7 @@ import { EditCardFlow } from "./components/edit-card-flow";
 import { formatDeckHierarchyTitle, hierarchyDecks } from "./deck-hierarchy";
 import { findDuplicateCardGroups } from "./domain/card-duplicates";
 import { resolveGenerationTemplate } from "./domain/edit-card";
+import { matchesSearchText } from "./domain/text-search";
 import GenerateCard from "./generate-card";
 import { cardMarkdown } from "./mochi-card-content";
 import {
@@ -1338,7 +1339,7 @@ function matchesCardSearch(card: MochiCard, query: string): boolean {
   if (!query) {
     return true;
   }
-  return cardTitle(card).toLocaleLowerCase().includes(query.toLocaleLowerCase());
+  return matchesSearchText(cardTitle(card), query);
 }
 
 function CardDetail({
