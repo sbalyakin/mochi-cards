@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { foldSearchText, matchesSearchText } from "./text-search";
+import { foldSearchText, matchesSearchText, startsWithSearchTextWord } from "./text-search";
 
 describe("search text folding", () => {
   it("strips Greek tonos and diaeresis", () => {
@@ -32,5 +32,24 @@ describe("matchesSearchText", () => {
   it("treats a blank query as a match", () => {
     expect(matchesSearchText("λόγος", "   ")).toBe(true);
     expect(matchesSearchText("λόγος", "   ", { ignoreAccents: true })).toBe(true);
+  });
+});
+
+describe("startsWithSearchTextWord", () => {
+  it("matches only word starts", () => {
+    expect(startsWithSearchTextWord("Cardinal bird", "car")).toBe(true);
+    expect(startsWithSearchTextWord("Blue cardinal", "car")).toBe(true);
+    expect(startsWithSearchTextWord("Discarded note", "car")).toBe(false);
+  });
+
+  it("matches multi-word queries at word starts", () => {
+    expect(startsWithSearchTextWord("Blue cardinal bird", "blue car")).toBe(true);
+    expect(startsWithSearchTextWord("Pale blue cardinal bird", "blue car")).toBe(true);
+    expect(startsWithSearchTextWord("Blue discarded cardinal", "blue car")).toBe(false);
+  });
+
+  it("uses accent-insensitive matching when asked", () => {
+    expect(startsWithSearchTextWord("Ο Λόγος", "λογ", { ignoreAccents: true })).toBe(true);
+    expect(startsWithSearchTextWord("Ο Λόγος", "λογ")).toBe(false);
   });
 });

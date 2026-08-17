@@ -22,7 +22,7 @@ import { EditCardFlow } from "./components/edit-card-flow";
 import { formatDeckHierarchyTitle, hierarchyDecks } from "./deck-hierarchy";
 import { findDuplicateCardGroups } from "./domain/card-duplicates";
 import { resolveGenerationTemplate } from "./domain/edit-card";
-import { matchesSearchText } from "./domain/text-search";
+import { matchesSearchText, startsWithSearchTextWord } from "./domain/text-search";
 import GenerateCard from "./generate-card";
 import { cardMarkdown } from "./mochi-card-content";
 import {
@@ -480,7 +480,13 @@ function CardList({
   const sortedCards = sortCards(cards, sort, isSortReversed);
   const visibleCards = sortedCards.filter((card) => matchesFilter(card, filter));
   const searchQuery = searchText.trim();
-  const searchedCards = visibleCards.filter((card) => matchesCardSearch(card, searchQuery, isIgnoringAccents));
+  let searchedCards = visibleCards.filter((card) => matchesCardSearch(card, searchQuery, isIgnoringAccents));
+  if (searchQuery) {
+    searchedCards = searchedCards
+      .map((card) => ({ card, rank: startsWithCardSearch(card, searchQuery, isIgnoringAccents) ? 0 : 1 }))
+      .sort((left, right) => left.rank - right.rank)
+      .map(({ card }) => card);
+  }
   const isCurrentSortDescending = isSortDescending(sort, isSortReversed);
 
   useEffect(() => {
@@ -1349,6 +1355,10 @@ function matchesCardSearch(card: MochiCard, query: string, ignoreAccents: boolea
     return true;
   }
   return matchesSearchText(cardTitle(card), query, { ignoreAccents });
+}
+
+function startsWithCardSearch(card: MochiCard, query: string, ignoreAccents: boolean): boolean {
+  return startsWithSearchTextWord(cardTitle(card), query, { ignoreAccents });
 }
 
 function CardDetail({
