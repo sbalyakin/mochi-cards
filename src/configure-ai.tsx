@@ -1,15 +1,4 @@
-import {
-  Action,
-  ActionPanel,
-  closeMainWindow,
-  Form,
-  Icon,
-  List,
-  popToRoot,
-  showToast,
-  Toast,
-  useNavigation,
-} from "@raycast/api";
+import { Action, ActionPanel, Form, Icon, List, popToRoot, showToast, Toast, useNavigation } from "@raycast/api";
 import { usePromise } from "@raycast/utils";
 import { useEffect, useRef, useState, type ReactElement } from "react";
 
@@ -114,7 +103,7 @@ export default function ConfigureAiCommand() {
       const saved = await aiSettingsRepository.save({ ...settings, customBaseUrl: baseUrl });
       setSettings(saved);
       await showToast({ style: Toast.Style.Success, title: `${displayName} Selected` });
-      await closeMainWindow();
+      await popToRoot();
     } catch (error: unknown) {
       setConnectionError(errorMessage(error));
     } finally {
