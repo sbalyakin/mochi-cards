@@ -12,6 +12,7 @@ import {
 } from "@raycast/api";
 import { usePromise } from "@raycast/utils";
 
+import { ExportExtensionDataForm, ImportExtensionDataForm } from "./components/extension-data-transfer-forms";
 import { RegenerationReport } from "./components/regeneration-report";
 import { TemplateForm } from "./components/template-form";
 import { checkBulkRegenerationAvailability } from "./domain/bulk-card-regeneration";
@@ -78,17 +79,32 @@ export default function ManageTemplates() {
       target={<TemplateForm repository={repository} onSaved={refresh} onDeleted={refresh} />}
     />
   );
+  const transferActions = (
+    <ActionPanel.Section title="Data Transfer">
+      <Action.Push title="Export Extension Data…" icon={Icon.Upload} target={<ExportExtensionDataForm />} />
+      <Action.Push
+        title="Import Extension Data…"
+        icon={Icon.Download}
+        target={<ImportExtensionDataForm onImported={refresh} />}
+      />
+    </ActionPanel.Section>
+  );
 
   return (
-    <List isLoading={isLoading} isShowingDetail={templates.length > 0} searchBarPlaceholder="Search templates">
+    <List
+      isLoading={isLoading}
+      isShowingDetail={!error && templates.length > 0}
+      searchBarPlaceholder="Search templates"
+    >
       {error ? (
-        <List.EmptyView
+        <List.Item
           icon={Icon.Warning}
           title="Couldn't Load Templates"
-          description={errorMessage(error)}
+          subtitle={errorMessage(error)}
           actions={
             <ActionPanel>
               <Action.Push title="View Last Regeneration Report" icon={Icon.List} target={<RegenerationReport />} />
+              {transferActions}
             </ActionPanel>
           }
         />
@@ -101,6 +117,7 @@ export default function ManageTemplates() {
             <ActionPanel>
               {createAction}
               <Action.Push title="View Last Regeneration Report" icon={Icon.List} target={<RegenerationReport />} />
+              {transferActions}
             </ActionPanel>
           }
         />
@@ -138,6 +155,7 @@ export default function ManageTemplates() {
                     shortcut={{ modifiers: ["cmd"], key: "d" }}
                     onAction={() => duplicate(template)}
                   />
+                  {transferActions}
                   <ActionPanel.Section title="Danger Zone">
                     <Action
                       title="Delete Template"
