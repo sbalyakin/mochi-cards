@@ -1,4 +1,4 @@
-import { Action, ActionPanel, Icon, List } from "@raycast/api";
+import { Action, ActionPanel, Icon, Keyboard, List } from "@raycast/api";
 import { usePromise } from "@raycast/utils";
 import { useState } from "react";
 
@@ -51,16 +51,24 @@ export default function GenerateCard({
       navigationTitle={deckId ? "Create Card" : undefined}
       searchBarPlaceholder="Choose a template to create a card"
     >
-      {matchingTemplates.length === 0 ? (
-        <List.EmptyView
-          icon={error ? Icon.Warning : Icon.Stars}
-          title={error ? "Couldn't Load Templates" : deckId ? "No Templates in This Deck" : "No Templates Yet"}
-          description={
-            error
-              ? errorMessage(error)
-              : deckId
-                ? "Create one for this deck in Manage Templates, then come back here."
-                : "Create one in Manage Templates, then come back here to make a card."
+      {error ? (
+        <List.EmptyView icon={Icon.Warning} title="Couldn't Load Templates" description={errorMessage(error)} />
+      ) : matchingTemplates.length === 0 ? (
+        <List.Item
+          icon={Icon.NewDocument}
+          title="Create Template"
+          subtitle={
+            deckId ? "Create a template for this deck to make a card." : "Create your first template to make a card."
+          }
+          actions={
+            <ActionPanel>
+              <Action.Push
+                title="Create Template"
+                icon={Icon.NewDocument}
+                shortcut={Keyboard.Shortcut.Common.New}
+                target={<TemplateForm repository={repository} onSaved={refresh} />}
+              />
+            </ActionPanel>
           }
         />
       ) : (

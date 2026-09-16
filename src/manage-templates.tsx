@@ -80,12 +80,23 @@ export default function ManageTemplates() {
   );
 
   return (
-    <List isLoading={isLoading} isShowingDetail searchBarPlaceholder="Search templates">
-      {templates.length === 0 ? (
+    <List isLoading={isLoading} isShowingDetail={templates.length > 0} searchBarPlaceholder="Search templates">
+      {error ? (
         <List.EmptyView
-          icon={error ? Icon.Warning : Icon.Document}
-          title={error ? "Couldn't Load Templates" : "No Templates Yet"}
-          description={error ? errorMessage(error) : "Create a Markdown template to make your first card."}
+          icon={Icon.Warning}
+          title="Couldn't Load Templates"
+          description={errorMessage(error)}
+          actions={
+            <ActionPanel>
+              <Action.Push title="View Last Regeneration Report" icon={Icon.List} target={<RegenerationReport />} />
+            </ActionPanel>
+          }
+        />
+      ) : templates.length === 0 ? (
+        <List.Item
+          icon={Icon.NewDocument}
+          title="Create Template"
+          subtitle="Create a Markdown template to make your first card."
           actions={
             <ActionPanel>
               {createAction}
