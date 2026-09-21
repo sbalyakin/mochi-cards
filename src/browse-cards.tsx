@@ -701,7 +701,12 @@ function CardList({
                     icon={Icon.NewDocument}
                     shortcut={Keyboard.Shortcut.Common.New}
                     target={
-                      <GenerateCard deckId={deck.id} onCardCreated={cacheCreatedCard} returnToSourceAfterCardCreated />
+                      <GenerateCard
+                        deckId={deck.id}
+                        initialSearchText={searchQuery || undefined}
+                        onCardCreated={cacheCreatedCard}
+                        returnToSourceAfterCardCreated
+                      />
                     }
                   />
                   <Action.CopyToClipboard
