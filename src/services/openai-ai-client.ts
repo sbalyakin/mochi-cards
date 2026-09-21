@@ -9,7 +9,8 @@ export class OpenAiAiClient implements AiClient {
     private readonly model: string,
     private readonly fetch: AiFetchLike = globalThis.fetch,
     private readonly timeoutMs = 60_000,
-    private readonly thinkingLevel?: AiThinkingLevel
+    private readonly thinkingLevel?: AiThinkingLevel,
+    private readonly maxOutputTokens?: number
   ) {}
 
   async ask(prompt: string, signal?: AbortSignal): Promise<string> {
@@ -24,7 +25,7 @@ export class OpenAiAiClient implements AiClient {
         model: this.model,
         input: prompt,
         store: false,
-        max_output_tokens: openAiMaxOutputTokens(this.thinkingLevel),
+        max_output_tokens: this.maxOutputTokens ?? openAiMaxOutputTokens(this.thinkingLevel),
         ...(this.thinkingLevel ? { reasoning: { effort: this.thinkingLevel } } : {}),
       },
       signal,
@@ -32,6 +33,19 @@ export class OpenAiAiClient implements AiClient {
       fetch: this.fetch,
       sensitiveValues: [this.apiKey, prompt],
     });
+
+    if (
+      isRecord(response) &&
+      response.status === "incomplete" &&
+      isRecord(response.incomplete_details) &&
+      response.incomplete_details.reason === "max_output_tokens"
+    ) {
+      throw new AiProviderError(
+        "openai",
+        "invalid-response",
+        "OpenAI stopped before finishing because it reached the Max Output Tokens limit. Increase Max Output Tokens in AI provider settings or request a shorter response."
+      );
+    }
 
     const texts = extractTexts(response);
     if (texts.length === 0) {

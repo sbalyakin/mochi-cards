@@ -1,6 +1,7 @@
 import type { ApiKeyAiProvider } from "./ai-provider";
 
 export const AI_THINKING_LEVELS = ["none", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+export const DEFAULT_MAX_OUTPUT_TOKENS = 16_384;
 const GPT_5_6_THINKING_LEVELS = ["none", "low", "medium", "high", "xhigh", "max"] as const;
 const GPT_5_4_AND_5_5_THINKING_LEVELS = ["none", "low", "medium", "high", "xhigh"] as const;
 
@@ -67,7 +68,7 @@ export function geminiThinkingConfig(
 
 export function geminiMaxOutputTokens(model: string, level: AiThinkingLevel | undefined): number {
   const budget = /^gemini-3(?:\.|-)/.test(model) ? undefined : thinkingBudgetFor(level ?? "none");
-  return Math.max(4096, (budget ?? 0) + 1024);
+  return Math.max(DEFAULT_MAX_OUTPUT_TOKENS, (budget ?? 0) + 1024);
 }
 
 export function anthropicThinkingBudget(level: AiThinkingLevel | undefined): number | undefined {
@@ -131,35 +132,11 @@ function geminiThinkingLevels(model: string | undefined): readonly AiThinkingLev
 }
 
 export function openAiMaxOutputTokens(level: AiThinkingLevel | undefined): number {
-  switch (level) {
-    case "high":
-    case "xhigh":
-    case "max":
-      return 32768;
-    case "low":
-    case "medium":
-    case "minimal":
-      return 8192;
-    case "none":
-    case undefined:
-      return 4096;
-  }
+  return level === "high" || level === "xhigh" || level === "max" ? 32768 : DEFAULT_MAX_OUTPUT_TOKENS;
 }
 
 export function anthropicMaxTokens(level: AiThinkingLevel | undefined): number {
-  switch (level) {
-    case "high":
-      return 32768;
-    case "low":
-    case "medium":
-      return 8192;
-    case "none":
-    case "minimal":
-    case "xhigh":
-    case "max":
-    case undefined:
-      return 4096;
-  }
+  return level === "high" ? 32768 : DEFAULT_MAX_OUTPUT_TOKENS;
 }
 
 function claudeUsesAdaptiveThinking(model: string): boolean {

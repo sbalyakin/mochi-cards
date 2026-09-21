@@ -22,9 +22,24 @@ describe("CustomAiClient", () => {
     expect(JSON.parse(String(init?.body))).toEqual({
       model: MODEL,
       messages: [{ role: "user", content: PROMPT }],
-      max_tokens: 4096,
+      max_tokens: 16384,
     });
   });
+
+  it.each(["length", "max_tokens", "MAX_TOKENS", "max_output_tokens"])(
+    "rejects truncated text with finish reason %s",
+    async (finishReason) => {
+      const fetch = successfulFetch({
+        choices: [{ message: { content: "partial" }, finish_reason: finishReason }],
+      });
+
+      await expect(new CustomAiClient(BASE_URL, MODEL, {}, "LiteLLM", fetch).ask(PROMPT)).rejects.toMatchObject({
+        provider: "custom",
+        kind: "invalid-response",
+        message: expect.stringContaining("Increase Max Output Tokens"),
+      });
+    }
+  );
 
   it("retries with max_completion_tokens when max_tokens is unsupported", async () => {
     const fetch = vi
@@ -45,9 +60,9 @@ describe("CustomAiClient", () => {
     await expect(client.ask(PROMPT)).resolves.toBe("answer");
 
     expect(fetch).toHaveBeenCalledTimes(3);
-    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toMatchObject({ max_tokens: 4096 });
-    expect(JSON.parse(String(fetch.mock.calls[1][1]?.body))).toMatchObject({ max_completion_tokens: 4096 });
-    expect(JSON.parse(String(fetch.mock.calls[2][1]?.body))).toMatchObject({ max_completion_tokens: 4096 });
+    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toMatchObject({ max_tokens: 16384 });
+    expect(JSON.parse(String(fetch.mock.calls[1][1]?.body))).toMatchObject({ max_completion_tokens: 16384 });
+    expect(JSON.parse(String(fetch.mock.calls[2][1]?.body))).toMatchObject({ max_completion_tokens: 16384 });
   });
 
   it("forces the Content-Type header even if a header tries to override it", async () => {

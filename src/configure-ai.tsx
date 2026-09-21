@@ -19,7 +19,13 @@ import {
 } from "./services/custom-ai-configuration";
 import { aiSettingsRepository } from "./services/raycast-ai-settings-repository";
 import { availableRaycastAiModels, DEFAULT_RAYCAST_AI_MODEL, type RaycastAiModel } from "./services/raycast-ai-client";
-import { AI_THINKING_LEVELS, aiThinkingLevels, supportsAiThinking, type AiThinkingLevel } from "./services/ai-thinking";
+import {
+  AI_THINKING_LEVELS,
+  aiThinkingLevels,
+  DEFAULT_MAX_OUTPUT_TOKENS,
+  supportsAiThinking,
+  type AiThinkingLevel,
+} from "./services/ai-thinking";
 
 const EMPTY_SETTINGS: AiPreferenceValues = { aiProvider: "raycast" };
 const modelCatalog = new AiModelCatalog();
@@ -70,6 +76,9 @@ export default function ConfigureAiCommand() {
       setConnectionError(`${AI_PROVIDER_DISPLAY_NAMES[provider]} API key is required`);
       return;
     }
+    if (maxOutputTokensFor(settings, provider) === 0) {
+      return;
+    }
 
     setIsSubmitting(true);
     const controller = new AbortController();
@@ -90,6 +99,9 @@ export default function ConfigureAiCommand() {
   async function saveCustomSettings(): Promise<void> {
     const displayName = customDisplayName(settings);
     try {
+      if (settings.customMaxOutputTokens === 0) {
+        throw new Error("Max Output Tokens must be a positive integer");
+      }
       const baseUrl = validateCustomBaseUrl(settings.customBaseUrl ?? "", displayName);
       if (!(settings.customModel ?? "").trim()) {
         throw new Error(`${displayName} Model ID is required`);
@@ -457,6 +469,29 @@ function CustomProviderFields({
           <Form.Dropdown.Item key={level} title={thinkingLevelTitle(level)} value={level} />
         ))}
       </Form.Dropdown>
+      <Form.TextField
+        id="customMaxOutputTokens"
+        title="Max Output Tokens"
+        placeholder="Default"
+        value={settings.customMaxOutputTokens?.toString() ?? ""}
+        error={settings.customMaxOutputTokens === 0 ? "Max Output Tokens must be a positive integer" : undefined}
+        onChange={(value) => {
+          if (value === "") {
+            onChange({ ...settings, customMaxOutputTokens: undefined });
+            return;
+          }
+          if (/^\d+$/.test(value)) {
+            const parsed = Number(value);
+            if (Number.isSafeInteger(parsed)) {
+              onChange({ ...settings, customMaxOutputTokens: parsed });
+            }
+          }
+        }}
+      />
+      <Form.Description
+        title="Output Limit"
+        text={`Leave blank to use the default of ${DEFAULT_MAX_OUTPUT_TOKENS.toLocaleString()} tokens.`}
+      />
       <Form.PasswordField
         id="customApiKey"
         title="API Key"
@@ -541,6 +576,7 @@ function ExternalProviderFields({
 }) {
   const model = modelFor(settings, provider);
   const modelName = modelNameFor(settings, provider);
+  const maxOutputTokens = maxOutputTokensFor(settings, provider);
   return (
     <>
       <Form.PasswordField
@@ -553,6 +589,29 @@ function ExternalProviderFields({
       <Form.Description
         title="Current Model"
         text={model ? (modelName ?? humanizeAiModelId(model)) : "No model selected yet."}
+      />
+      <Form.TextField
+        id={`${provider}MaxOutputTokens`}
+        title="Max Output Tokens"
+        placeholder="Default"
+        value={maxOutputTokens?.toString() ?? ""}
+        error={maxOutputTokens === 0 ? "Max Output Tokens must be a positive integer" : undefined}
+        onChange={(value) => {
+          if (value === "") {
+            onChange(withMaxOutputTokens(settings, provider, undefined));
+            return;
+          }
+          if (/^\d+$/.test(value)) {
+            const parsed = Number(value);
+            if (Number.isSafeInteger(parsed)) {
+              onChange(withMaxOutputTokens(settings, provider, parsed));
+            }
+          }
+        }}
+      />
+      <Form.Description
+        title="Output Limit"
+        text={`Leave blank to use the default of ${DEFAULT_MAX_OUTPUT_TOKENS.toLocaleString()} tokens. Higher thinking levels may use a larger limit.`}
       />
     </>
   );
@@ -1069,6 +1128,32 @@ function thinkingLevelFor(settings: AiPreferenceValues, provider: ExternalAiProv
       return settings.geminiThinkingLevel;
     case "anthropic":
       return settings.anthropicThinkingLevel;
+  }
+}
+
+function maxOutputTokensFor(settings: AiPreferenceValues, provider: ExternalAiProvider): number | undefined {
+  switch (provider) {
+    case "openai":
+      return settings.openaiMaxOutputTokens;
+    case "gemini":
+      return settings.geminiMaxOutputTokens;
+    case "anthropic":
+      return settings.anthropicMaxOutputTokens;
+  }
+}
+
+function withMaxOutputTokens(
+  settings: AiPreferenceValues,
+  provider: ExternalAiProvider,
+  maxOutputTokens: number | undefined
+): AiPreferenceValues {
+  switch (provider) {
+    case "openai":
+      return { ...settings, openaiMaxOutputTokens: maxOutputTokens };
+    case "gemini":
+      return { ...settings, geminiMaxOutputTokens: maxOutputTokens };
+    case "anthropic":
+      return { ...settings, anthropicMaxOutputTokens: maxOutputTokens };
   }
 }
 

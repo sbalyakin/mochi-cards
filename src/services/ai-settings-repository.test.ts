@@ -23,14 +23,17 @@ describe("AiSettingsRepository", () => {
       openaiModel: "  openai-model  ",
       openaiModelName: "  OpenAI Model  ",
       openaiThinkingLevel: "high",
+      openaiMaxOutputTokens: 10_000,
       geminiApiKey: "  gemini-key  ",
       geminiModel: "  gemini-model  ",
       geminiModelName: "  Gemini Model  ",
       geminiThinkingLevel: "medium",
+      geminiMaxOutputTokens: 12_345,
       anthropicApiKey: "  anthropic-key  ",
       anthropicModel: "  anthropic-model  ",
       anthropicModelName: "  Claude Model  ",
       anthropicThinkingLevel: "low",
+      anthropicMaxOutputTokens: 23_456,
     });
 
     await expect(repository.get()).resolves.toEqual({
@@ -41,14 +44,17 @@ describe("AiSettingsRepository", () => {
       openaiModel: "openai-model",
       openaiModelName: "OpenAI Model",
       openaiThinkingLevel: "high",
+      openaiMaxOutputTokens: 10_000,
       geminiApiKey: "gemini-key",
       geminiModel: "gemini-model",
       geminiModelName: "Gemini Model",
       geminiThinkingLevel: "medium",
+      geminiMaxOutputTokens: 12_345,
       anthropicApiKey: "anthropic-key",
       anthropicModel: "anthropic-model",
       anthropicModelName: "Claude Model",
       anthropicThinkingLevel: "low",
+      anthropicMaxOutputTokens: 23_456,
     });
   });
 
@@ -107,6 +113,14 @@ describe("AiSettingsRepository", () => {
     });
   });
 
+  it.each([0, -1, 1.5, "4096"])("rejects invalid persisted Max Output Tokens: %s", async (value) => {
+    const fixture = stores(JSON.stringify({ version: 6, aiProvider: "gemini", geminiMaxOutputTokens: value }));
+
+    await expect(new AiSettingsRepository(fixture.values, fixture.secrets).get()).rejects.toThrow(
+      "Stored AI provider settings are invalid"
+    );
+  });
+
   it("saves and restores a custom provider profile", async () => {
     const fixture = stores();
     const repository = new AiSettingsRepository(fixture.values, fixture.secrets);
@@ -117,6 +131,7 @@ describe("AiSettingsRepository", () => {
       customBaseUrl: "  http://localhost:11434/v1  ",
       customModel: "  llama3.1  ",
       customThinkingLevel: "high",
+      customMaxOutputTokens: 32_000,
       customApiKey: "  sk-1  ",
       customHeadersJson: '  {"X-Organization": "team"}  ',
     });
@@ -127,6 +142,7 @@ describe("AiSettingsRepository", () => {
       customBaseUrl: "http://localhost:11434/v1",
       customModel: "llama3.1",
       customThinkingLevel: "high",
+      customMaxOutputTokens: 32_000,
       customApiKey: "sk-1",
       customHeadersJson: '{"X-Organization": "team"}',
     });

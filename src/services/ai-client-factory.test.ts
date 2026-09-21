@@ -38,13 +38,19 @@ describe("createAiClient", () => {
       aiProvider,
       openaiApiKey: "key",
       openaiModel: "model",
+      openaiMaxOutputTokens: 12_345,
       geminiApiKey: "key",
       geminiModel: "model",
+      geminiMaxOutputTokens: 12_345,
       anthropicApiKey: "key",
       anthropicModel: "model",
+      anthropicMaxOutputTokens: 12_345,
     };
 
-    expect(createAiClient(preferences)).toBeInstanceOf(Client);
+    const client = createAiClient(preferences);
+
+    expect(client).toBeInstanceOf(Client);
+    expect(client).toMatchObject({ maxOutputTokens: 12_345 });
   });
 
   it("trims the API key and model ID", async () => {
@@ -88,6 +94,7 @@ describe("createAiClient", () => {
         customBaseUrl: "http://localhost:11434/v1/",
         customModel: "  llama3.1  ",
         customThinkingLevel: "high",
+        customMaxOutputTokens: 12_345,
         customApiKey: "  sk-1  ",
         customHeadersJson: '{"X-Organization": "team"}',
       },
@@ -100,7 +107,11 @@ describe("createAiClient", () => {
     const [url, init] = fetch.mock.calls[0];
     expect(url).toBe("http://localhost:11434/v1/chat/completions");
     expect(init?.headers).toMatchObject({ Authorization: "Bearer sk-1", "X-Organization": "team" });
-    expect(JSON.parse(String(init?.body))).toMatchObject({ model: "llama3.1", reasoning_effort: "high" });
+    expect(JSON.parse(String(init?.body))).toMatchObject({
+      model: "llama3.1",
+      reasoning_effort: "high",
+      max_tokens: 12_345,
+    });
   });
 
   it("keeps an Authorization header from additional JSON when no API key is configured", async () => {

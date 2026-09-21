@@ -28,7 +28,7 @@ const adapters: readonly AdapterCase[] = [
     create: (fetch, timeoutMs) => new OpenAiAiClient(API_KEY, MODEL, fetch, timeoutMs),
     url: "https://api.openai.com/v1/responses",
     authorizationHeader: { Authorization: `Bearer ${API_KEY}` },
-    expectedBody: { model: MODEL, input: PROMPT, store: false, max_output_tokens: 4096 },
+    expectedBody: { model: MODEL, input: PROMPT, store: false, max_output_tokens: 16384 },
     singleResponse: { output: [{ content: [{ type: "output_text", text: "one" }] }] },
     multipleResponse: {
       output: [
@@ -49,9 +49,9 @@ const adapters: readonly AdapterCase[] = [
     authorizationHeader: { "x-goog-api-key": API_KEY },
     expectedBody: {
       contents: [{ role: "user", parts: [{ text: PROMPT }] }],
-      generationConfig: { maxOutputTokens: 4096 },
+      generationConfig: { maxOutputTokens: 16384 },
     },
-    singleResponse: { candidates: [{ content: { parts: [{ text: "one" }] } }] },
+    singleResponse: { candidates: [{ content: { parts: [{ text: "one" }] }, finishReason: "STOP" }] },
     multipleResponse: {
       candidates: [
         { content: { parts: [{ text: "one" }, { inlineData: "ignored" }, { text: "two" }] } },
@@ -66,10 +66,10 @@ const adapters: readonly AdapterCase[] = [
     authorizationHeader: { "x-api-key": API_KEY, "anthropic-version": "2023-06-01" },
     expectedBody: {
       model: MODEL,
-      max_tokens: 4096,
+      max_tokens: 16384,
       messages: [{ role: "user", content: PROMPT }],
     },
-    singleResponse: { content: [{ type: "text", text: "one" }] },
+    singleResponse: { content: [{ type: "text", text: "one" }], stop_reason: "end_turn" },
     multipleResponse: {
       content: [
         { type: "thinking", thinking: "ignored" },
@@ -177,6 +177,61 @@ describe.each(adapters)("$provider AI client", (adapter) => {
   });
 });
 
+describe.each([
+  {
+    provider: "openai",
+    create: (fetch: AiFetchLike) => new OpenAiAiClient(API_KEY, MODEL, fetch),
+    response: {
+      status: "incomplete",
+      incomplete_details: { reason: "max_output_tokens" },
+      output: [{ content: [{ type: "output_text", text: "partial" }] }],
+    },
+  },
+  {
+    provider: "anthropic",
+    create: (fetch: AiFetchLike) => new AnthropicAiClient(API_KEY, MODEL, fetch),
+    response: { content: [{ type: "text", text: "partial" }], stop_reason: "max_tokens" },
+  },
+  {
+    provider: "gemini",
+    create: (fetch: AiFetchLike) => new GeminiAiClient(API_KEY, MODEL, fetch),
+    response: { candidates: [{ content: { parts: [{ text: "partial" }] }, finishReason: "MAX_TOKENS" }] },
+  },
+])("$provider output limit", ({ provider, create, response }) => {
+  it("rejects truncated text", async () => {
+    await expect(create(successfulFetch(response)).ask(PROMPT)).rejects.toMatchObject({
+      provider,
+      kind: "invalid-response",
+      message: expect.stringContaining("Increase Max Output Tokens"),
+    });
+  });
+});
+
+it.each([
+  {
+    provider: "openai",
+    create: (fetch: AiFetchLike) => new OpenAiAiClient(API_KEY, MODEL, fetch, undefined, undefined, 12_345),
+    response: { output: [{ content: [{ type: "output_text", text: "one" }] }] },
+  },
+  {
+    provider: "anthropic",
+    create: (fetch: AiFetchLike) => new AnthropicAiClient(API_KEY, MODEL, fetch, undefined, undefined, 12_345),
+    response: { content: [{ type: "text", text: "one" }], stop_reason: "end_turn" },
+  },
+  {
+    provider: "gemini",
+    create: (fetch: AiFetchLike) => new GeminiAiClient(API_KEY, MODEL, fetch, undefined, undefined, 12_345),
+    response: { candidates: [{ content: { parts: [{ text: "one" }] }, finishReason: "STOP" }] },
+  },
+])("uses configured Max Output Tokens for $provider", async ({ create, response }) => {
+  const fetch = successfulFetch(response);
+
+  await create(fetch).ask(PROMPT);
+
+  const body = JSON.parse(String(fetch.mock.calls[0][1]?.body));
+  expect(body.max_tokens ?? body.max_output_tokens ?? body.generationConfig?.maxOutputTokens).toBe(12_345);
+});
+
 describe("thinking configuration", () => {
   it("sends OpenAI reasoning effort", async () => {
     const fetch = successfulFetch({ output: [{ content: [{ type: "output_text", text: "one" }] }] });
@@ -211,7 +266,7 @@ describe("thinking configuration", () => {
     await new GeminiAiClient(API_KEY, "gemini-2.5-flash", fetch, undefined, "high").ask(PROMPT);
 
     expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toMatchObject({
-      generationConfig: { maxOutputTokens: 9216, thinkingConfig: { thinkingBudget: 8192 } },
+      generationConfig: { maxOutputTokens: 16384, thinkingConfig: { thinkingBudget: 8192 } },
     });
   });
 
@@ -232,7 +287,7 @@ describe("thinking configuration", () => {
 
     expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toMatchObject({
       thinking: { type: "enabled", budget_tokens: 1024 },
-      max_tokens: 8192,
+      max_tokens: 16384,
     });
   });
 

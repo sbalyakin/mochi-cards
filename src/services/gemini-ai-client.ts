@@ -9,7 +9,8 @@ export class GeminiAiClient implements AiClient {
     private readonly model: string,
     private readonly fetch: AiFetchLike = globalThis.fetch,
     private readonly timeoutMs = 60_000,
-    private readonly thinkingLevel?: AiThinkingLevel
+    private readonly thinkingLevel?: AiThinkingLevel,
+    private readonly maxOutputTokens?: number
   ) {}
 
   async ask(prompt: string, signal?: AbortSignal): Promise<string> {
@@ -31,7 +32,7 @@ export class GeminiAiClient implements AiClient {
           },
         ],
         generationConfig: {
-          maxOutputTokens: geminiMaxOutputTokens(this.model, this.thinkingLevel),
+          maxOutputTokens: this.maxOutputTokens ?? geminiMaxOutputTokens(this.model, this.thinkingLevel),
           ...(thinkingConfig ? { thinkingConfig } : {}),
         },
       },
@@ -40,6 +41,19 @@ export class GeminiAiClient implements AiClient {
       fetch: this.fetch,
       sensitiveValues: [this.apiKey, prompt],
     });
+
+    if (
+      isRecord(response) &&
+      Array.isArray(response.candidates) &&
+      isRecord(response.candidates[0]) &&
+      response.candidates[0].finishReason === "MAX_TOKENS"
+    ) {
+      throw new AiProviderError(
+        "gemini",
+        "invalid-response",
+        "Gemini stopped before finishing because it reached the Max Output Tokens limit. Increase Max Output Tokens in AI provider settings or request a shorter response."
+      );
+    }
 
     const texts = extractTexts(response);
     if (texts.length === 0) {

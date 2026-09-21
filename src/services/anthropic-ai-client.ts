@@ -9,7 +9,8 @@ export class AnthropicAiClient implements AiClient {
     private readonly model: string,
     private readonly fetch: AiFetchLike = globalThis.fetch,
     private readonly timeoutMs = 60_000,
-    private readonly thinkingLevel?: AiThinkingLevel
+    private readonly thinkingLevel?: AiThinkingLevel,
+    private readonly maxOutputTokens?: number
   ) {}
 
   async ask(prompt: string, signal?: AbortSignal): Promise<string> {
@@ -24,7 +25,8 @@ export class AnthropicAiClient implements AiClient {
       },
       body: {
         model: this.model,
-        max_tokens: Math.max(anthropicMaxTokens(this.thinkingLevel), (thinking.budget ?? 0) + 1024),
+        max_tokens:
+          this.maxOutputTokens ?? Math.max(anthropicMaxTokens(this.thinkingLevel), (thinking.budget ?? 0) + 1024),
         ...(thinking.thinking ? { thinking: thinking.thinking } : {}),
         ...(thinking.outputConfig ? { output_config: thinking.outputConfig } : {}),
         messages: [
@@ -39,6 +41,14 @@ export class AnthropicAiClient implements AiClient {
       fetch: this.fetch,
       sensitiveValues: [this.apiKey, prompt],
     });
+
+    if (isRecord(response) && response.stop_reason === "max_tokens") {
+      throw new AiProviderError(
+        "anthropic",
+        "invalid-response",
+        "Anthropic stopped before finishing because it reached the Max Output Tokens limit. Increase Max Output Tokens in AI provider settings or request a shorter response."
+      );
+    }
 
     const texts = extractTexts(response);
     if (texts.length === 0) {

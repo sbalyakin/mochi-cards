@@ -48,8 +48,8 @@ describe("AI thinking configuration", () => {
   });
 
   it("uses a response-token reserve beyond a Gemini thinking budget", () => {
-    expect(geminiMaxOutputTokens("gemini-2.5-flash", "medium")).toBe(5120);
-    expect(geminiMaxOutputTokens("gemini-2.5-flash", "high")).toBe(9216);
+    expect(geminiMaxOutputTokens("gemini-2.5-flash", "medium")).toBe(16384);
+    expect(geminiMaxOutputTokens("gemini-2.5-flash", "high")).toBe(16384);
   });
 
   it("does not assume every Claude model supports thinking", () => {
@@ -68,14 +68,14 @@ describe("AI thinking configuration", () => {
   });
 
   it("reserves more output tokens for higher OpenAI reasoning efforts", () => {
-    expect(openAiMaxOutputTokens(undefined)).toBe(4096);
-    expect(openAiMaxOutputTokens("medium")).toBe(8192);
+    expect(openAiMaxOutputTokens(undefined)).toBe(16384);
+    expect(openAiMaxOutputTokens("medium")).toBe(16384);
     expect(openAiMaxOutputTokens("max")).toBe(32768);
   });
 
   it("reserves more output tokens for higher Claude thinking efforts", () => {
-    expect(anthropicMaxTokens(undefined)).toBe(4096);
-    expect(anthropicMaxTokens("medium")).toBe(8192);
+    expect(anthropicMaxTokens(undefined)).toBe(16384);
+    expect(anthropicMaxTokens("medium")).toBe(16384);
     expect(anthropicMaxTokens("high")).toBe(32768);
   });
 });
