@@ -5,6 +5,8 @@ import type { AiThinkingLevel } from "./ai-thinking";
 import { normalizeCustomHeaders, sensitiveHeaderValues } from "./custom-ai-configuration";
 
 export class CustomAiClient implements AiClient {
+  private maxTokensParameter: "max_tokens" | "max_completion_tokens" = "max_tokens";
+
   constructor(
     private readonly baseUrl: string,
     private readonly model: string,
@@ -17,23 +19,41 @@ export class CustomAiClient implements AiClient {
 
   async ask(prompt: string, signal?: AbortSignal): Promise<string> {
     const headers = normalizeCustomHeaders(this.headers, this.displayName);
-    const response = await httpPost("custom", {
-      url: `${this.baseUrl}/chat/completions`,
-      method: "POST",
-      headers: withJsonContentType(headers),
-      body: {
-        model: this.model,
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: 4096,
-        ...(this.thinkingLevel ? { reasoning_effort: this.thinkingLevel } : {}),
-      },
-      signal,
-      timeoutMs: this.timeoutMs,
-      fetch: this.fetch,
-      sensitiveValues: [prompt, ...sensitiveHeaderValues(headers)],
-      displayName: this.displayName,
-      redirect: "error",
-    });
+    const request = (maxTokensParameter: "max_tokens" | "max_completion_tokens") =>
+      httpPost("custom", {
+        url: `${this.baseUrl}/chat/completions`,
+        method: "POST",
+        headers: withJsonContentType(headers),
+        body: {
+          model: this.model,
+          messages: [{ role: "user", content: prompt }],
+          [maxTokensParameter]: 4096,
+          ...(this.thinkingLevel ? { reasoning_effort: this.thinkingLevel } : {}),
+        },
+        signal,
+        timeoutMs: this.timeoutMs,
+        fetch: this.fetch,
+        sensitiveValues: [prompt, ...sensitiveHeaderValues(headers)],
+        displayName: this.displayName,
+        redirect: "error",
+      });
+
+    let response: unknown;
+    try {
+      response = await request(this.maxTokensParameter);
+    } catch (error: unknown) {
+      if (
+        this.maxTokensParameter !== "max_tokens" ||
+        !(error instanceof AiProviderError) ||
+        error.status !== 400 ||
+        !error.message.includes("max_tokens") ||
+        !error.message.includes("max_completion_tokens")
+      ) {
+        throw error;
+      }
+      this.maxTokensParameter = "max_completion_tokens";
+      response = await request(this.maxTokensParameter);
+    }
 
     const text = extractText(response);
     if (!text) {

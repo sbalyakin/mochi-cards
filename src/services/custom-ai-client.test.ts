@@ -26,6 +26,30 @@ describe("CustomAiClient", () => {
     });
   });
 
+  it("retries with max_completion_tokens when max_tokens is unsupported", async () => {
+    const fetch = vi
+      .fn<AiFetchLike>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: { message: "Unsupported parameter: 'max_tokens'. Use 'max_completion_tokens' instead." },
+          }),
+          { status: 400 }
+        )
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: "answer" } }] })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: "answer" } }] })));
+    const client = new CustomAiClient(BASE_URL, MODEL, {}, "LiteLLM", fetch);
+
+    await expect(client.ask(PROMPT)).resolves.toBe("answer");
+    await expect(client.ask(PROMPT)).resolves.toBe("answer");
+
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toMatchObject({ max_tokens: 4096 });
+    expect(JSON.parse(String(fetch.mock.calls[1][1]?.body))).toMatchObject({ max_completion_tokens: 4096 });
+    expect(JSON.parse(String(fetch.mock.calls[2][1]?.body))).toMatchObject({ max_completion_tokens: 4096 });
+  });
+
   it("forces the Content-Type header even if a header tries to override it", async () => {
     const fetch = successfulFetch({ choices: [{ message: { content: "answer" } }] });
     const headers = { "Content-Type": "text/plain" };

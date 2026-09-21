@@ -36,5 +36,5 @@ Custom AI targets any OpenAI-compatible Chat Completions API: [Ollama](https://o
 - **Base URL** must be a plain `http`/`https` URL with no credentials, query string, or fragment. Requests go to `{Base URL}/chat/completions` and, when browsing models, `{Base URL}/models`.
 - **Model ID** is sent as-is in the request body; use "Browse Models" to pick one from `{Base URL}/models` when the server supports it.
 - **Headers JSON** is a flat JSON object of string values (e.g. `{"Authorization": "Bearer sk-..."}`) sent with every request. It is stored in macOS Keychain as a single secret; Provider Name, Base URL, and Model ID are stored in Raycast extension storage.
-- Custom AI does not support thinking/reasoning configuration or streaming; it sends `max_tokens: 4096` on every request.
+- Custom AI supports optional reasoning effort but not streaming. It sends `max_tokens: 4096` and automatically retries with `max_completion_tokens` when required by the model.
 - Plain `http` is accepted only for loopback hosts such as `localhost` and `127.0.0.1`. Remote endpoints must use `https` so prompts and credentials are encrypted in transit.
