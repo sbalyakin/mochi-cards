@@ -101,14 +101,14 @@ describe("CustomAiClient", () => {
     });
   });
 
-  it("suppresses custom provider response bodies in errors", async () => {
+  it("includes custom provider diagnostics in errors", async () => {
     const response = JSON.stringify({ error: { message: "provider diagnostic details" } });
     const fetch = vi.fn<AiFetchLike>().mockResolvedValue(new Response(response, { status: 400 }));
 
     await expect(new CustomAiClient(BASE_URL, MODEL, {}, "Ollama", fetch).ask(PROMPT)).rejects.toMatchObject({
       provider: "custom",
       kind: "request-failed",
-      message: "Ollama request failed (400)",
+      message: "Ollama request failed (400): provider diagnostic details",
     });
   });
 

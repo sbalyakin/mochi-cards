@@ -161,8 +161,7 @@ function httpStatusError(
   if (kind === "provider-unavailable") {
     return new AiProviderError(provider, kind, `${name} is temporarily unavailable`, { status });
   }
-  const providerMessage =
-    provider !== "custom" && (status === 400 || status === 404) ? extractErrorMessage(responseText) : undefined;
+  const providerMessage = status === 400 || status === 404 ? extractErrorMessage(responseText) : undefined;
   const safeMessage = providerMessage ? redactAndTruncate(providerMessage, sensitiveValues) : undefined;
   const message = safeMessage
     ? `${name} request failed (${status}): ${safeMessage}`

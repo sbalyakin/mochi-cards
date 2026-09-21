@@ -200,6 +200,7 @@ export default function ConfigureAiCommand() {
             />
           )}
           {!error ? <Action title="Test Provider" icon={Icon.CheckCircle} onAction={testProvider} /> : null}
+          {!error && connectionError ? <Action.CopyToClipboard title="Copy Error" content={connectionError} /> : null}
           {!error && settings.aiProvider === "custom" ? (
             <Action title="Browse Models" icon={Icon.List} onAction={browseCustomModels} />
           ) : null}
