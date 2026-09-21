@@ -87,6 +87,7 @@ describe("createAiClient", () => {
         customProviderName: "Ollama",
         customBaseUrl: "http://localhost:11434/v1/",
         customModel: "  llama3.1  ",
+        customThinkingLevel: "high",
         customApiKey: "  sk-1  ",
         customHeadersJson: '{"X-Organization": "team"}',
       },
@@ -99,7 +100,7 @@ describe("createAiClient", () => {
     const [url, init] = fetch.mock.calls[0];
     expect(url).toBe("http://localhost:11434/v1/chat/completions");
     expect(init?.headers).toMatchObject({ Authorization: "Bearer sk-1", "X-Organization": "team" });
-    expect(JSON.parse(String(init?.body))).toMatchObject({ model: "llama3.1" });
+    expect(JSON.parse(String(init?.body))).toMatchObject({ model: "llama3.1", reasoning_effort: "high" });
   });
 
   it("keeps an Authorization header from additional JSON when no API key is configured", async () => {

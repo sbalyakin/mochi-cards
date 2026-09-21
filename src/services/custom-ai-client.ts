@@ -1,6 +1,7 @@
 import type { AiClient } from "../domain/template-engine";
 import { httpPost, type AiFetchLike } from "./ai-http-client";
 import { AiProviderError } from "./ai-provider";
+import type { AiThinkingLevel } from "./ai-thinking";
 import { normalizeCustomHeaders, sensitiveHeaderValues } from "./custom-ai-configuration";
 
 export class CustomAiClient implements AiClient {
@@ -10,7 +11,8 @@ export class CustomAiClient implements AiClient {
     private readonly headers: Readonly<Record<string, string>>,
     private readonly displayName: string,
     private readonly fetch: AiFetchLike = globalThis.fetch,
-    private readonly timeoutMs = 180_000
+    private readonly timeoutMs = 180_000,
+    private readonly thinkingLevel?: AiThinkingLevel
   ) {}
 
   async ask(prompt: string, signal?: AbortSignal): Promise<string> {
@@ -23,6 +25,7 @@ export class CustomAiClient implements AiClient {
         model: this.model,
         messages: [{ role: "user", content: prompt }],
         max_tokens: 4096,
+        ...(this.thinkingLevel ? { reasoning_effort: this.thinkingLevel } : {}),
       },
       signal,
       timeoutMs: this.timeoutMs,

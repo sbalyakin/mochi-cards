@@ -19,7 +19,7 @@ import {
 } from "./services/custom-ai-configuration";
 import { aiSettingsRepository } from "./services/raycast-ai-settings-repository";
 import { availableRaycastAiModels, DEFAULT_RAYCAST_AI_MODEL, type RaycastAiModel } from "./services/raycast-ai-client";
-import { aiThinkingLevels, supportsAiThinking, type AiThinkingLevel } from "./services/ai-thinking";
+import { AI_THINKING_LEVELS, aiThinkingLevels, supportsAiThinking, type AiThinkingLevel } from "./services/ai-thinking";
 
 const EMPTY_SETTINGS: AiPreferenceValues = { aiProvider: "raycast" };
 const modelCatalog = new AiModelCatalog();
@@ -440,6 +440,22 @@ function CustomProviderFields({
         value={settings.customModel ?? ""}
         onChange={(value) => onChange({ ...settings, customModel: value })}
       />
+      <Form.Dropdown
+        id="customThinkingLevel"
+        title="Reasoning Effort"
+        value={settings.customThinkingLevel ?? "default"}
+        onChange={(value) =>
+          onChange({
+            ...settings,
+            customThinkingLevel: AI_THINKING_LEVELS.find((level) => level === value),
+          })
+        }
+      >
+        <Form.Dropdown.Item title="Provider Default" value="default" />
+        {AI_THINKING_LEVELS.map((level) => (
+          <Form.Dropdown.Item key={level} title={thinkingLevelTitle(level)} value={level} />
+        ))}
+      </Form.Dropdown>
       <Form.PasswordField
         id="customApiKey"
         title="API Key"

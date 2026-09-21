@@ -58,6 +58,7 @@ export type AiPreferenceValues = {
   readonly customProviderName?: string;
   readonly customBaseUrl?: string;
   readonly customModel?: string;
+  readonly customThinkingLevel?: import("./ai-thinking").AiThinkingLevel;
   readonly customApiKey?: string;
   readonly customHeadersJson?: string;
 };

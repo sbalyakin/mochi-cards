@@ -36,6 +36,7 @@ type StoredAiSettings = {
   readonly customProviderName?: string;
   readonly customBaseUrl?: string;
   readonly customModel?: string;
+  readonly customThinkingLevel?: AiThinkingLevel;
 };
 
 export class AiSettingsRepository {
@@ -76,6 +77,7 @@ export class AiSettingsRepository {
       ...optionalValue("customProviderName", stored.customProviderName),
       ...optionalValue("customBaseUrl", stored.customBaseUrl),
       ...optionalValue("customModel", stored.customModel),
+      ...optionalThinkingValue("customThinkingLevel", stored.customThinkingLevel),
       ...optionalValue("customApiKey", customApiKey),
       ...optionalValue("customHeadersJson", customHeadersJson),
     };
@@ -109,6 +111,7 @@ export class AiSettingsRepository {
       ...optionalValue("customProviderName", normalized.customProviderName),
       ...optionalValue("customBaseUrl", normalized.customBaseUrl),
       ...optionalValue("customModel", normalized.customModel),
+      ...optionalThinkingValue("customThinkingLevel", normalized.customThinkingLevel),
     };
     const [previousStoredValue, ...previousSecretValues] = await Promise.all([
       this.values.getItem(SETTINGS_STORAGE_KEY),
@@ -212,6 +215,7 @@ function parseStoredSettings(value: unknown): StoredAiSettings {
         : {}),
       ...(parsed.version === 4 || parsed.version === 5 ? optionalString("customBaseUrl", parsed.customBaseUrl) : {}),
       ...(parsed.version === 4 || parsed.version === 5 ? optionalString("customModel", parsed.customModel) : {}),
+      ...(parsed.version === 5 ? optionalThinkingLevel("customThinkingLevel", parsed.customThinkingLevel) : {}),
     };
   } catch (error: unknown) {
     throw new Error("Stored AI provider settings are invalid", { cause: error });
@@ -238,6 +242,7 @@ function normalizeSettings(settings: AiPreferenceValues): AiPreferenceValues {
     ...optionalValue("customProviderName", trimmed(settings.customProviderName)),
     ...optionalValue("customBaseUrl", trimmed(settings.customBaseUrl)),
     ...optionalValue("customModel", trimmed(settings.customModel)),
+    ...optionalThinkingValue("customThinkingLevel", settings.customThinkingLevel),
     ...optionalValue("customApiKey", trimmed(settings.customApiKey)),
     ...optionalValue("customHeadersJson", trimmed(settings.customHeadersJson)),
   };

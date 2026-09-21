@@ -56,7 +56,15 @@ export function createAiClient(preferences: AiPreferenceValues, options: AiClien
         preferences.customApiKey,
         displayName
       );
-      return new CustomAiClient(baseUrl, model, headers, displayName, options.fetch, options.timeoutMs);
+      return new CustomAiClient(
+        baseUrl,
+        model,
+        headers,
+        displayName,
+        options.fetch,
+        options.timeoutMs,
+        preferences.customThinkingLevel
+      );
     }
 
     default:

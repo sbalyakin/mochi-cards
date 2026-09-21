@@ -116,6 +116,7 @@ describe("AiSettingsRepository", () => {
       customProviderName: "  Ollama  ",
       customBaseUrl: "  http://localhost:11434/v1  ",
       customModel: "  llama3.1  ",
+      customThinkingLevel: "high",
       customApiKey: "  sk-1  ",
       customHeadersJson: '  {"X-Organization": "team"}  ',
     });
@@ -125,6 +126,7 @@ describe("AiSettingsRepository", () => {
       customProviderName: "Ollama",
       customBaseUrl: "http://localhost:11434/v1",
       customModel: "llama3.1",
+      customThinkingLevel: "high",
       customApiKey: "sk-1",
       customHeadersJson: '{"X-Organization": "team"}',
     });
