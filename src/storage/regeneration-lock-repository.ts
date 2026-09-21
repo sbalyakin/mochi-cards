@@ -119,24 +119,15 @@ function createToken(): string {
 }
 
 const nodeFileSystem: RegenerationLockFileSystem = {
-  /**
-   * Writes the record under a private staging name and publishes it with an
-   * atomic link, so the lock path never names a half-written file that a
-   * competing acquirer would read as corrupted.
-   */
   createExclusive(filePath, content) {
-    const stagingPath = `${filePath}.${createToken()}.staging`;
-    fs.writeFileSync(stagingPath, content, { flag: "wx" });
     try {
-      fs.linkSync(stagingPath, filePath);
+      fs.writeFileSync(filePath, content, { flag: "wx" });
       return true;
     } catch (error: unknown) {
       if ((error as NodeJS.ErrnoException).code === "EEXIST") {
         return false;
       }
       throw error;
-    } finally {
-      fs.unlinkSync(stagingPath);
     }
   },
   read(filePath) {
