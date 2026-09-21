@@ -10,7 +10,7 @@ export class CustomAiClient implements AiClient {
     private readonly headers: Readonly<Record<string, string>>,
     private readonly displayName: string,
     private readonly fetch: AiFetchLike = globalThis.fetch,
-    private readonly timeoutMs = 60_000
+    private readonly timeoutMs = 180_000
   ) {}
 
   async ask(prompt: string, signal?: AbortSignal): Promise<string> {
