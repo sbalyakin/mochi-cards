@@ -106,7 +106,7 @@ When asked to generate a commit message:
 - return only the final commit message unless additional explanation is requested
 - include a body when needed by the rules above
 - do not return multiple options unless explicitly requested
-- do NOT wrap the output in markdown code blocks (```) or quotes
+- do not wrap the output in code fences or quotes; the calling workflow uses it verbatim
 - choose the most specific scope supported by the changes
 
 # Examples

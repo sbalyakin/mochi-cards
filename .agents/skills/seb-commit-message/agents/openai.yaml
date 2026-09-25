@@ -1,4 +1,0 @@
-interface:
-  display_name: "SEB Commit Message"
-  short_description: "Generate commit message"
-  default_prompt: "Use $seb-commit-message to generate a commit message."

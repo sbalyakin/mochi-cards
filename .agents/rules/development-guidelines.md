@@ -23,11 +23,11 @@
 - Keep the project `.prettierrc` aligned with Raycast conventions: `printWidth: 120`, `singleQuote: false`, `semi: true`, `tabWidth: 2`, and `trailingComma: "es5"` unless the repository config already differs.
 - Use ESLint with `@raycast/eslint-config` as the baseline for style and Raycast-specific rules. Avoid personal rule overrides unless they solve a concrete project problem.
 - Run `npm run lint` before handoff. Fix lint issues in changed files; use auto-fix when safe.
-- Prefer `npm run build` or the repository formatting script when present. Do not commit unformatted code.
+- Format touched files with `npx prettier --write <files>`; `npm run format` rewrites all of `src/`. Do not commit unformatted code.
 - Use UTF-8, LF line endings, and a final newline in text files. Do not commit trailing whitespace.
 - Name command entry files with `.tsx` when the command renders UI; use `.ts` for non-UI modules.
 - Keep one primary export per command entry file. Use `kebab-case` for filenames and `PascalCase` for React components.
-- Order imports in this sequence: Node built-ins, external packages, Raycast packages, internal absolute/relative imports. Separate groups with a blank line.
+- Group imports as Node built-ins, then external packages (including `@raycast/*` and `react`), then internal modules, with a blank line between groups.
 - Sort named imports alphabetically within each import statement when Prettier does not already define otherwise.
 - Prefer a single blank line between top-level declarations. Do not add decorative blank lines inside small functions.
 - Break long argument lists and JSX props across lines when they exceed the print width; let Prettier decide the final wrapping.
@@ -80,4 +80,3 @@
 - Keep changes narrow and do not mix feature work with unrelated cleanup.
 - Before handoff, run formatting, linting, type checking, tests, and `ray build`; report any check that could not be run.
 - Update technical documentation when setup, public contracts, dependencies, or maintenance procedures change.
-- Write code comments in English. Communicate with the user in Russian.
