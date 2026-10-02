@@ -6,6 +6,7 @@
   ],
   "skills": {
     "paths": [
+      "~/.agents/skills",
       ".agents/skills"
     ]
   }
