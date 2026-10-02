@@ -13,7 +13,7 @@ import { createAiClient } from "./ai-client-factory";
 import { AiProviderError } from "./ai-provider";
 import { loadLiveTemplate } from "./bulk-card-regenerator";
 import type { MochiClient } from "./mochi-client";
-import { aiSettingsRepository } from "./raycast-ai-settings-repository";
+import { aiSettingsRepository } from "../storage/raycast-ai-settings-repository";
 
 const contextRepository = new CardGenerationContextRepository();
 const lockRepository = new RegenerationLockRepository();

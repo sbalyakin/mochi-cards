@@ -49,7 +49,7 @@ import {
 import { createAiClient } from "../services/ai-client-factory";
 import { displayAiModelName } from "../services/ai-model-display-name";
 import { AiProviderError } from "../services/ai-provider";
-import { aiSettingsRepository } from "../services/raycast-ai-settings-repository";
+import { aiSettingsRepository } from "../storage/raycast-ai-settings-repository";
 import { CardCacheRepository, upsertCreatedCardBestEffort } from "../storage/card-cache-repository";
 import { CardGenerationContextRepository } from "../storage/card-generation-context-repository";
 import { CardPreviewSettingsRepository } from "../storage/card-preview-settings-repository";

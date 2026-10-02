@@ -1,7 +1,7 @@
 import { LocalStorage } from "@raycast/api";
 
 import { AiSettingsRepository, type AiSettingsValueStore } from "./ai-settings-repository";
-import { MacOsKeychainSecretStore } from "./macos-keychain-secret-store";
+import { MacOsKeychainSecretStore } from "../services/macos-keychain-secret-store";
 
 const valueStore: AiSettingsValueStore = {
   getItem: (key) => LocalStorage.getItem(key),

@@ -17,7 +17,7 @@ import {
   validateCustomBaseUrl,
   withBearerAuthorization,
 } from "./services/custom-ai-configuration";
-import { aiSettingsRepository } from "./services/raycast-ai-settings-repository";
+import { aiSettingsRepository } from "./storage/raycast-ai-settings-repository";
 import { availableRaycastAiModels, DEFAULT_RAYCAST_AI_MODEL, type RaycastAiModel } from "./services/raycast-ai-client";
 import {
   AI_THINKING_LEVELS,

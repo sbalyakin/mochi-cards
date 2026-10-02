@@ -17,7 +17,7 @@ import {
 import { useState } from "react";
 
 import { parseExtensionData, replaceExtensionData, serializeExtensionData } from "../extension-data-transfer";
-import { validateExtensionData } from "../extension-data-validation";
+import { validateExtensionData } from "../storage/extension-data-validation";
 import {
   extensionDataFileExists,
   readExtensionDataFile,

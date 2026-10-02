@@ -1,5 +1,5 @@
-import type { AiPreferenceValues, AiProvider } from "./ai-provider";
-import type { AiThinkingLevel } from "./ai-thinking";
+import type { AiPreferenceValues, AiProvider } from "../services/ai-provider";
+import type { AiThinkingLevel } from "../services/ai-thinking";
 
 const SETTINGS_STORAGE_KEY = "ai-provider-settings-v1";
 const EXTERNAL_PROVIDERS = ["openai", "gemini", "anthropic"] as const;

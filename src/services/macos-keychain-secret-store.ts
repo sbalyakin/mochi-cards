@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
-import type { AiSettingsSecretStore } from "./ai-settings-repository";
+import type { AiSettingsSecretStore } from "../storage/ai-settings-repository";
 
 const SECURITY_EXECUTABLE = "/usr/bin/security";
 const KEYCHAIN_SERVICE = "com.sergey-balyakin.raycast.mochi-cards.ai";

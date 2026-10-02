@@ -11,7 +11,7 @@ import {
   runBulkCardBatch,
 } from "./services/bulk-card-regenerator";
 import { MochiClient } from "./services/mochi-client";
-import { aiSettingsRepository } from "./services/raycast-ai-settings-repository";
+import { aiSettingsRepository } from "./storage/raycast-ai-settings-repository";
 import { CardCacheRepository, upsertCreatedCardBestEffort } from "./storage/card-cache-repository";
 import { CardGenerationContextRepository } from "./storage/card-generation-context-repository";
 import { RegenerationLockRepository } from "./storage/regeneration-lock-repository";

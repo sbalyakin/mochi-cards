@@ -1,12 +1,12 @@
-import { AiSettingsRepository } from "./services/ai-settings-repository";
-import { CardGenerationContextRepository } from "./storage/card-generation-context-repository";
-import { CardListSortRepository } from "./storage/card-list-sort-repository";
-import { CardPreviewSettingsRepository } from "./storage/card-preview-settings-repository";
-import { DeckBrowseOrderRepository } from "./storage/deck-browse-order-repository";
-import { DeckSelectionRepository } from "./storage/deck-selection-repository";
-import { RegenerationReportRepository } from "./storage/regeneration-report-repository";
-import { TemplateRepository } from "./storage/template-repository";
-import type { ExtensionData, ExtensionDataValue } from "./extension-data-transfer";
+import { AiSettingsRepository } from "./ai-settings-repository";
+import { CardGenerationContextRepository } from "./card-generation-context-repository";
+import { CardListSortRepository } from "./card-list-sort-repository";
+import { CardPreviewSettingsRepository } from "./card-preview-settings-repository";
+import { DeckBrowseOrderRepository } from "./deck-browse-order-repository";
+import { DeckSelectionRepository } from "./deck-selection-repository";
+import { RegenerationReportRepository } from "./regeneration-report-repository";
+import { TemplateRepository } from "./template-repository";
+import type { ExtensionData, ExtensionDataValue } from "../extension-data-transfer";
 
 const CONTEXT_KEY_PREFIX = "mochi-card-generation-context:v1:";
 
