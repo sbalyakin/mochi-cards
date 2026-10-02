@@ -1,4 +1,4 @@
-import type { MochiCard } from "./services/mochi-client";
+import type { MochiCard } from "../services/mochi-client";
 
 export const CARD_SORT_OPTIONS = [
   { value: "position", title: "Position" },

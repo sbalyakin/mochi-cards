@@ -17,14 +17,21 @@ import {
 import { useCachedPromise, usePromise } from "@raycast/utils";
 import { useEffect, useRef, useState } from "react";
 
-import { CARD_SORT_OPTIONS, cardTitle, isCardSort, isSortDescending, sortCards, type CardSort } from "./card-sorting";
+import {
+  CARD_SORT_OPTIONS,
+  cardTitle,
+  isCardSort,
+  isSortDescending,
+  sortCards,
+  type CardSort,
+} from "./domain/card-sorting";
 import { EditCardFlow } from "./components/edit-card-flow";
-import { formatDeckHierarchyTitle, hierarchyDecks } from "./deck-hierarchy";
+import { formatDeckHierarchyTitle, hierarchyDecks } from "./domain/deck-hierarchy";
 import { findDuplicateCardGroups } from "./domain/card-duplicates";
 import { resolveGenerationTemplate } from "./domain/edit-card";
 import { matchesSearchText, startsWithSearchTextWord } from "./domain/text-search";
 import GenerateCard from "./generate-card";
-import { cardMarkdown } from "./mochi-card-content";
+import { cardMarkdown } from "./domain/mochi-card-content";
 import {
   isMochiDeckNotFoundError,
   MochiClient,

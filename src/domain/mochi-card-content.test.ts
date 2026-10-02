@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { cardMarkdown } from "./mochi-card-content";
-import type { MochiCard, MochiTemplate } from "./services/mochi-client";
+import type { MochiCard, MochiTemplate } from "../services/mochi-client";
 
 describe("cardMarkdown", () => {
   it("uses card content before a Mochi template", () => {

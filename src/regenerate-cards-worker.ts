@@ -1,6 +1,6 @@
 import { getPreferenceValues, LaunchProps, showToast, Toast } from "@raycast/api";
 
-import { cardTitle } from "./card-sorting";
+import { cardTitle } from "./domain/card-sorting";
 import { parseRegenerationJob, type RegenerationJob } from "./domain/bulk-card-regeneration";
 import { templateUsesAi, type AiClient } from "./domain/template-engine";
 import { createAiClient } from "./services/ai-client-factory";

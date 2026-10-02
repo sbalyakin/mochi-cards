@@ -1,6 +1,6 @@
 import { LocalStorage } from "@raycast/api";
 
-import { isCardSort, type CardSort } from "../card-sorting";
+import { isCardSort, type CardSort } from "../domain/card-sorting";
 
 const STORAGE_KEY = "mochi-card-list-sort-preferences";
 const STORAGE_VERSION = 1;

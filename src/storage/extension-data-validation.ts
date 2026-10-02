@@ -6,7 +6,7 @@ import { DeckBrowseOrderRepository } from "./deck-browse-order-repository";
 import { DeckSelectionRepository } from "./deck-selection-repository";
 import { RegenerationReportRepository } from "./regeneration-report-repository";
 import { TemplateRepository } from "./template-repository";
-import type { ExtensionData, ExtensionDataValue } from "../extension-data-transfer";
+import type { ExtensionData, ExtensionDataValue } from "../domain/extension-data-transfer";
 
 const CONTEXT_KEY_PREFIX = "mochi-card-generation-context:v1:";
 

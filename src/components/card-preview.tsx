@@ -15,7 +15,7 @@ import {
 import { usePromise } from "@raycast/utils";
 import { useEffect, useRef, useState } from "react";
 
-import { cardTitle } from "../card-sorting";
+import { cardTitle } from "../domain/card-sorting";
 import { deriveMochiCardName, findDuplicateCardByName, selectDuplicateCandidate } from "../domain/card-duplicates";
 import { cardChangedSinceOpen, mergeUpdateFields } from "../domain/edit-card";
 import {
@@ -37,8 +37,8 @@ import {
 import type { CardTemplate, FieldValues } from "../domain/template";
 import { templateUsesAi, type AiClient } from "../domain/template-engine";
 import { detectTemplateDrift, refreshTemplateSnapshot } from "../domain/mochi-template";
-import { cardMarkdown } from "../mochi-card-content";
-import { renderRaycastMarkdown } from "../raycast-markdown";
+import { cardMarkdown } from "../domain/mochi-card-content";
+import { renderRaycastMarkdown } from "../domain/raycast-markdown";
 import {
   MochiClient,
   MochiError,

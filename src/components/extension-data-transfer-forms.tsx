@@ -16,7 +16,7 @@ import {
 } from "@raycast/api";
 import { useState } from "react";
 
-import { parseExtensionData, replaceExtensionData, serializeExtensionData } from "../extension-data-transfer";
+import { parseExtensionData, replaceExtensionData, serializeExtensionData } from "../domain/extension-data-transfer";
 import { validateExtensionData } from "../storage/extension-data-validation";
 import {
   extensionDataFileExists,

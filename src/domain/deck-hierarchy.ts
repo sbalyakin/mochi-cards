@@ -1,4 +1,4 @@
-import type { MochiDeck } from "./services/mochi-client";
+import type { MochiDeck } from "../services/mochi-client";
 
 export type HierarchicalDeck = {
   readonly deck: MochiDeck;

@@ -1,8 +1,8 @@
-import { substituteFields, trimOuterEmptyLines } from "./domain/template-engine";
-import { parseTemplate } from "./domain/template-parser";
-import { fieldValueAsString, type FieldValues } from "./domain/template";
+import { substituteFields, trimOuterEmptyLines } from "./template-engine";
+import { parseTemplate } from "./template-parser";
+import { fieldValueAsString, type FieldValues } from "./template";
 import { renderRaycastMarkdown } from "./raycast-markdown";
-import type { MochiCard, MochiTemplate } from "./services/mochi-client";
+import type { MochiCard, MochiTemplate } from "../services/mochi-client";
 
 const MISSING_AI_CONTENT_MESSAGE = "_Update this card in Mochi to generate its content._";
 

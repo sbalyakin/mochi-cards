@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { isSortDescending, sortCards } from "./card-sorting";
-import type { MochiCard } from "./services/mochi-client";
+import type { MochiCard } from "../services/mochi-client";
 
 describe("sortCards", () => {
   it("sorts cards by every supported criterion", () => {
