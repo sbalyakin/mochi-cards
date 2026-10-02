@@ -63,6 +63,7 @@
     "fix-lint": "ray lint --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx}\" package.json",
     "lint": "ray lint",
+    "lint:code": "eslint src && prettier --check \"src/**/*.{ts,tsx}\" package.json",
     "publish": "npx @raycast/api@latest publish",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"

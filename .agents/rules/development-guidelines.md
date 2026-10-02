@@ -22,7 +22,7 @@
 - Treat Prettier as the single source of truth for code layout. Do not hand-format against the formatter.
 - Keep the project `.prettierrc` aligned with Raycast conventions: `printWidth: 120`, `singleQuote: false`, `semi: true`, `tabWidth: 2`, and `trailingComma: "es5"` unless the repository config already differs.
 - Use ESLint with `@raycast/eslint-config` as the baseline for style and Raycast-specific rules. Avoid personal rule overrides unless they solve a concrete project problem.
-- Run `npm run lint` before handoff. Fix lint issues in changed files; use auto-fix when safe.
+- Run `npm run lint` before handoff. Fix lint issues in changed files; use auto-fix when safe. If `ray lint` fails on remote author or schema validation, run `npm run lint:code` (offline ESLint and Prettier) and report the remote failure.
 - Format touched files with `npx prettier --write <files>`; `npm run format` rewrites all of `src/`. Do not commit unformatted code.
 - Use UTF-8, LF line endings, and a final newline in text files. Do not commit trailing whitespace.
 - Name command entry files with `.tsx` when the command renders UI; use `.ts` for non-UI modules.
